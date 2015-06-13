@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Mike Trienis</title>
+    <description>Technical blog focusing data infrastructure.</description>
+    <link>http://trienis.github.io/</link>
+    <atom:link href="http://trienis.github.io/feed.xml" rel="self" type="application/rss+xml"/>
+    <pubDate>Sat, 13 Jun 2015 12:32:08 -0700</pubDate>
+    <lastBuildDate>Sat, 13 Jun 2015 12:32:08 -0700</lastBuildDate>
+    <generator>Jekyll v2.5.3</generator>
+    
+      <item>
+        <title>Launching Apache Spark using Supervisord</title>
+        <description>&lt;h1 id=&quot;launching-master-and-workers-in-standalone-mode&quot;&gt;Launching master and worker(s) in standalone mode&lt;/h1&gt;
+
+&lt;p&gt;Apache Spark comes bundled with several &lt;a href=&quot;https://spark.apache.org/docs/latest/spark-standalone.html&quot;&gt;launch scripts&lt;/a&gt; to start the master and worker processes. For example, we can launch a master and two workers processes by executing:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;./sbin/start-master.sh
+./sbin/start-slaves.sh &lt;span class=&quot;m&quot;&gt;1&lt;/span&gt; spark://master.mydomain.com:7077
+./sbin/start-slaves.sh &lt;span class=&quot;m&quot;&gt;2&lt;/span&gt; spark://master.mydomain.com:7077&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The main issue with launching the cluster through this method is that each time the cluster reboots you will need to re-execute the shell scripts above. This process is cumbersome and prone to error.&lt;/p&gt;
+
+&lt;h1 id=&quot;controlling-master-and-worker-process-with-supervisord&quot;&gt;Controlling master and worker process with Supervisord&lt;/h1&gt;
+
+&lt;p&gt;A better approach requires the use of &lt;a href=&quot;http://supervisord.org/introduction.html&quot;&gt;supervisord&lt;/a&gt; (a process control system) to manage spark processes. It has the following benefits:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;A homogeneous method for &lt;em&gt;starting/stopping/restarting&lt;/em&gt; processes&lt;/li&gt;
+  &lt;li&gt;Provides a centralized monitoring mechanism for sensitive services&lt;/li&gt;
+  &lt;li&gt;Accurate up/down statuses – even when a process crashes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The only requirements is that processes must be run in the &lt;em&gt;foreground&lt;/em&gt;. Therefore master and worker(s) processes should be initiated through &lt;code&gt;spark-class&lt;/code&gt; as the sbin shell scripts daemonize the processes. For example,&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;/supervisor/conf.d/spark_master.conf&lt;/em&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[program:spark_master]
+command=/bin/spark-class org.apache.spark.deploy.master.Master --ip master.mydomain.com --port 7077 --webui-port 18080
+stderr_logfile = /var/log/spark_master-stderr.log
+stdout_logfile = /var/log/spark_master-stdout.log
+priority=1
+autostart=true
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;em&gt;/supervisor/conf.d/spark_worker.conf&lt;/em&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;[program:spark_worker]
+command=/bin/spark-class org.apache.spark.deploy.worker.Worker spark://master.mydomain.com:7077
+stderr_logfile = /var/log/spark_worker-stderr.log
+stdout_logfile = /var/log/spark_worker-stdout.log
+priority=2
+autostart=true
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It’s convenient to drop your configuration files into &lt;code&gt;/supvisor/conf.d/&lt;/code&gt; as they will be picked up automatically when you start the Supervisord service. It allows you to easily manage the distribution of these services to different nodes.&lt;/p&gt;
+
+&lt;p&gt;The priority flag means that the master will start prior to the worker. You can also set the number of retries (default is 3) for the worker in case the master has not completed its startup sequence.&lt;/p&gt;
+</description>
+        <pubDate>Thu, 04 Jun 2015 17:00:01 -0700</pubDate>
+        <link>http://trienis.github.io/apache/spark,/supervisord/2015/06/04/apache-spark-supervisord.html</link>
+        <guid isPermaLink="true">http://trienis.github.io/apache/spark,/supervisord/2015/06/04/apache-spark-supervisord.html</guid>
+        
+        
+        <category>apache</category>
+        
+        <category>spark,</category>
+        
+        <category>supervisord</category>
+        
+      </item>
+    
+      <item>
+        <title>Integrating Spark Streaming and AWS Redshift</title>
+        <description>&lt;link rel=&quot;stylesheet&quot; href=&quot;/assets/mermaid-f1d05f7537c76d3356c12f5906925351.css&quot; /&gt;
+
+&lt;p&gt;The most efficient way to load data into AWS Redshift is first upload your data to S3 and then execute the copy command on Redshift. From the &lt;a href=&quot;http://docs.aws.amazon.com/redshift/latest/dg/t_Loading_data.html&quot;&gt;documentation&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A COPY command is the most efficient way to load a table. When you load data from Amazon S3, the COPY command is able to read from multiple data files simultaneously. Whether you load from data files on Amazon S3 or from an Amazon DynamoDB table, Amazon Redshift distributes the workload to the cluster nodes and performs the load process in parallel.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Therefore for each batch of data in your Spark Streaming application,&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Write the batch to an S3 folder that is identified by the batch interval&lt;/li&gt;
+  &lt;li&gt;Copy the batch to Redshift by executing a &lt;code&gt;copy&lt;/code&gt; command&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;script src=&quot;/js/mermaid_config.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;/js/mermaid.js&quot;&gt;&lt;/script&gt;
+&lt;div class=&quot;mermaid&quot;&gt;
+        graph LR
+        
+        %% Example diagram
+        A[AWS Kinesis] --&amp;gt; B[Spark Streaming Application]
+        B --&amp;gt; C[AWS S3]
+        B --&amp;gt; D[AWS Redshift]
+        C -.-&amp;gt; D
+&lt;/div&gt;
+
+&lt;p&gt;Pushing data from Spark Streaming to S3 is fairly straight forward as Spark exposes the &lt;code&gt;saveAsTextFile&lt;/code&gt; output operation that supports &lt;code&gt;s3n&lt;/code&gt; hadoop connection point. The S3 endpoint may have a structure resemblying&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;s3n://[accessKey]:[secretKey]@[bucket]/[batchFolder]/[batchInterval]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The output operation can be applied to both RDDs and DStreams. However, in order to uniquely identify the batch interval we will need to expose the spark streaming &lt;em&gt;time&lt;/em&gt; parameter. Simply override the DStream &lt;code&gt;foreachRDD&lt;/code&gt; function by&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;dispatch&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;RDD&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;],&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Time&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Unit&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// 1. Write the batch to an _S3_ folder that is identified by the batch interval &lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// 2. Copy the batch to Redshift by executing a `copy` command&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;// perform etl process&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dstream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foreachRDD&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;dispatch&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;_&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+</description>
+        <pubDate>Sat, 30 May 2015 17:00:01 -0700</pubDate>
+        <link>http://trienis.github.io/apache/spark/2015/05/30/apache-spark-redshift.html</link>
+        <guid isPermaLink="true">http://trienis.github.io/apache/spark/2015/05/30/apache-spark-redshift.html</guid>
+        
+        
+        <category>apache</category>
+        
+        <category>spark</category>
+        
+      </item>
+    
+      <item>
+        <title>Spark Streaming and AWS Kinesis Pitfalls</title>
+        <description>&lt;h1 id=&quot;common-pitfalls&quot;&gt;Common pitfalls&lt;/h1&gt;
+
+&lt;h3 id=&quot;each-receiver-occupies-an-entire-core&quot;&gt;Each receiver occupies an entire core&lt;/h3&gt;
+
+&lt;p&gt;I realize this sounds like an obvious statement. However it can be subtle problem if you end up creating too many receivers for a spark streaming application. For example, the code snippet,&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numStreams&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numShards&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;// Create the Kinesis DStreams&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kinesisStreams&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;until&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numStreams&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;map&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&amp;gt;&lt;/span&gt;
+	&lt;span class=&quot;nc&quot;&gt;KinesisUtils&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;createStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ssc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;appName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;streamName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;endpointUrl&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;regionName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;nc&quot;&gt;InitialPositionInStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;LATEST&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kinesisCheckpointInterval&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;StorageLevel&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;MEMORY_AND_DISK_2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;creates as many streams as you have shards. Each stream creates a receiver, and will occupy an entire core for the duration of your streaming application. This means that if you scale out the number of shards, you will also need to scale out the number of cores available for your executors. Otheriwse, you may find yourself running out of cores.&lt;/p&gt;
+
+&lt;h3 id=&quot;never-cross-your-kinesis-stream-names-mid-flow&quot;&gt;Never cross your Kinesis stream names mid flow&lt;/h3&gt;
+
+&lt;p&gt;During development you may need to change the stream name as you debug your application. Soon after you may noticed that you are unable to process any additional records from Kinesis. The solution here is to purge the Kinesis related DynamoDB table located in the us-east-1 region. In some cases you may also need to delete and recreate Kinesis streams.&lt;/p&gt;
+
+&lt;h3 id=&quot;total-job-duration-should-never-exceed-batch-interval-time&quot;&gt;Total job duration should never exceed batch interval time&lt;/h3&gt;
+
+&lt;p&gt;There are a couple ways to monitor throughput:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;
+    &lt;p&gt;Cloud watch provides dashboards for monitoring the put and get requests. It’s important to understand these metrics as it will allow you to determine whether you need to increase the number of shards in Kinesis or workers in apache spark. If the get rate (bytes / records) is less than the maximum available then the bottleneck is the consumer application (i.e. spark streaming).&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;The web UI provides a scheduler delay metric that is determined by the time required to assign a task to an available resource. If your scheduling delay is increasing, it’s a good indication that your system can not handle the amount of incoming data.&lt;/p&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;how-to-avoid-dependency-hell-when-using-assembly-sbt&quot;&gt;How to avoid dependency hell when using assembly-sbt&lt;/h3&gt;
+
+&lt;p&gt;Assembling your fat jar through &lt;code&gt;sbt-assembly&lt;/code&gt; will result in a huge number of library conflicts. In order to circumvent this issue, you can simply include all spark libraries as &lt;code&gt;provided&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;n&quot;&gt;libraryDependencies&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;++=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Seq&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-core&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;1.3.0&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-streaming&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;1.3.0&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-streaming-kinesis-asl_2.10&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Provided is defined as:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;This is much like &lt;code&gt;compile&lt;/code&gt;, but indicates you expect the JDK or a container to provide the dependency at runtime. For example, when building a web application for the Java Enterprise Edition, you would set the dependency on the Servlet API and related Java EE APIs to scope &lt;code&gt;provided&lt;/code&gt; because the web container provides those classes. This scope is only available on the compilation and test classpath, and is not transitive.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Submitting a spark application through &lt;code&gt;spark-submit&lt;/code&gt; will automatically include those libraries at run-time. Additional libraries can be provided at run time by specifying &lt;code&gt;--jars&lt;/code&gt; arguments.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;./bin/spark-submit &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  --verbose 
+  --jars &amp;lt;external-jars&amp;gt;
+  --class &amp;lt;main-class&amp;gt;
+  --master &amp;lt;master-url&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  --deploy-mode &amp;lt;deploy-mode&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  ... &lt;span class=&quot;c&quot;&gt;# other options&lt;/span&gt;
+  &amp;lt;application-jar&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;application-arguments&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+</description>
+        <pubDate>Sat, 30 May 2015 17:00:01 -0700</pubDate>
+        <link>http://trienis.github.io/apache/spark/2015/05/30/apache-spark-kinesis.html</link>
+        <guid isPermaLink="true">http://trienis.github.io/apache/spark/2015/05/30/apache-spark-kinesis.html</guid>
+        
+        
+        <category>apache</category>
+        
+        <category>spark</category>
+        
+      </item>
+    
+      <item>
+        <title>Apache Spark web UI and VPC</title>
+        <description>&lt;h3 id=&quot;how-to-access-the-web-ui-when-using-a-private-vpc&quot;&gt;How to access the web UI when using a private VPC&lt;/h3&gt;
+
+&lt;p&gt;First set the spark configuration variable. It will point all master and worker links on the web UI to the domain &lt;code&gt;spark-web-ui.example.com&lt;/code&gt; instead of the internal IP addresses.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;EXPORT &lt;span class=&quot;nv&quot;&gt;SPARK_PUBLIC_DNS&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;spark-web-ui.example.com&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;However, since a domain can only map to one address you will need to setup a nginx proxy to forward the http request to each node in the cluster.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nginx&quot; data-lang=&quot;nginx&quot;&gt;&lt;span class=&quot;k&quot;&gt;upstream&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;spark_worker&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kn&quot;&gt;server&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;spark-worker.example.com&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;18081&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;server&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kn&quot;&gt;listen&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;18081&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;kn&quot;&gt;server_name&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;spark-web-ui.example.com&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+    &lt;span class=&quot;kn&quot;&gt;location&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;kn&quot;&gt;proxy_pass&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;http://spark_worker&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+</description>
+        <pubDate>Fri, 29 May 2015 17:00:01 -0700</pubDate>
+        <link>http://trienis.github.io/apache/spark/2015/05/29/apache-spark-web-ui.html</link>
+        <guid isPermaLink="true">http://trienis.github.io/apache/spark/2015/05/29/apache-spark-web-ui.html</guid>
+        
+        
+        <category>apache</category>
+        
+        <category>spark</category>
+        
+      </item>
+    
+  </channel>
+</rss>
