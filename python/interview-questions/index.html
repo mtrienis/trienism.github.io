@@ -1,0 +1,413 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Programming phone screen questions &#8211; Quickinsights</title>
+<meta name="description" content="How do you scale a write/read-heavy application?
+
+">
+<meta name="keywords" content="">
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Programming phone screen questions">
+<meta name="twitter:description" content="How do you scale a write/read-heavy application?
+
+">
+<meta name="twitter:site" content="@trienism">
+<meta name="twitter:creator" content="@trienism">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/images/sample-image-7.jpg">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Programming phone screen questions">
+<meta property="og:description" content="How do you scale a write/read-heavy application?
+
+">
+<meta property="og:url" content="/python/interview-questions/">
+<meta property="og:site_name" content="Quickinsights">
+
+<meta property="og:image" content="/images/sample-image-7.jpg">
+
+
+
+
+
+
+<link rel="canonical" href="/python/interview-questions/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Quickinsights Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/apple-touch-icon-144x144-precomposed.png">
+
+</head>
+
+<body class="post">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		<a href="/">Quickinsights</a>
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				        
+				    
+				    <li><a href="/about/" >About</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/interests/" >Interests</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/blog/" >Blog</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+  <div class="image-wrap">
+  <img src=
+    
+      "/images/sample-image-7.jpg"
+    
+  alt="Programming phone screen questions feature image">
+  </div><!-- /.image-wrap -->
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+
+<div itemscope itemtype="http://schema.org/Person">
+
+
+	<img src="/images/bio-photo-mike.png" class="bio-photo" alt="Mike Trienis bio photo">
+
+
+  <h3 itemprop="name">Mike Trienis</h3>
+  <p>All about data product and services that scale; from design to implementation</p>
+  <a href="mailto:mike.trienis@quickinsights.io" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="http://twitter.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  <a href="http://linkedin.com/in/miketrienis" class="author-social" target="_blank"><i class="fa fa-fw fa-linkedin-square"></i> LinkedIn</a>
+  
+  
+  
+  <a href="http://github.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> Github</a>
+  <a href="http://stackoverflow.com/users/3747110/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-stack-overflow"></i> Stackoverflow</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="post">
+    <div class="headline-wrap">
+      
+        <h1><a href="/python/interview-questions/" rel="bookmark" title="Programming phone screen questions">Programming phone screen questions</a></h1>
+      
+    </div><!--/ .headline-wrap -->
+    <div class="article-wrap">
+      <h2 id="how-do-you-scale-a-writeread-heavy-application">How do you scale a write/read-heavy application?</h2>
+
+<h3 id="read-heavy-applications">Read-heavy applications</h3>
+
+<p>They are scaled out by adding slaves to the database as well as web nodes for serving the requests. Caching is also a useful strategy for high concurrency.</p>
+
+<h3 id="write-heavy-applications">Write-heavy applications</h3>
+
+<p>They are scaled out by sharding the database. It serves to balance the write load as well as distribute the data across multiple machines.</p>
+
+<h2 id="what-is-the-difference-between-a-thread-and-a-process">What is the difference between a thread and a process?</h2>
+
+<p>Threads are used for small tasks, whereas processes are used for more ‘heavyweight’ tasks – basically the execution of applications. Another difference between a thread and a process is that threads within the same process share the same address space, whereas different processes do not.</p>
+
+<h2 id="what-is-the-difference-between-async-and-sync-requests">What is the difference between async and sync requests?</h2>
+
+<p>A synchronous operation will prevent you from doing anything else while waiting for the request to complete or time out. Using an asynchronous operation would let you animate something for the user to show the program is busy, or even let them carry on working with other areas of functionality.</p>
+
+<h2 id="what-is-the-difference-between-udp-and-tcp">What is the difference between UDP and TCP?</h2>
+
+<h3 id="tcp">TCP</h3>
+
+<p>A message makes its way across the internet from one computer to another. Suited for applications that required high reliability and transmission time is less critical.</p>
+
+<ul>
+  <li>HTTP, HTTPs, FTP, SMTP, TELNET</li>
+  <li>Connection-oriented protocol</li>
+</ul>
+
+<h3 id="udp">UDP</h3>
+
+<p>Suited for application that need fast, efficient transmissions, such as games. One program can send a load of packets to another and that would be the end of the relationship.</p>
+
+<ul>
+  <li>DNS, DHCP, TFTP, SNMP, RIP, VOIP</li>
+  <li>Connectionless protocol</li>
+</ul>
+
+<h2 id="what-is-a-load-balancer-and-how-is-it-useful">What is a load balancer and how is it useful?</h2>
+
+<p>A load balancer is a device that acts as a reverse proxy and distributes network or application traffic across a number of servers. Load balancers are used to increase capacity (concurrent users) and reliability of applications.</p>
+
+<h2 id="what-are-left-right-natural-joins-with-sql">What are LEFT, RIGHT, NATURAL joins with SQL?</h2>
+
+<h3 id="left-join">Left join</h3>
+
+<p>LEFT JOIN is same as LEFT OUTER JOIN and means to show all records from left table (i.e. the one that precedes in SQL statement) regardless of the existence of matching records in the right table.</p>
+
+<h3 id="right-join">Right join</h3>
+
+<p>RIGHT JOIN is same as RIGHT OUTER JOIN and means opposite of LEFT JOIN, i.e. shows all records from the second (right) table and only matching records from first (left) table.</p>
+
+<h3 id="natural-join">Natural join</h3>
+
+<p>JOIN records that match in both tables</p>
+
+<h2 id="what-is-an-index">What is an index?</h2>
+
+<p>Most MySQL indexes (PRIMARY KEY, UNIQUE, INDEX, and FULLTEXT) are stored in B-trees.</p>
+
+<h2 id="what-is-the-mvc-pattern">What is the MVC pattern?</h2>
+
+<p>Model–View–Controller (MVC) is a type of computer user interface that separates the representation of information from the user’s interaction with it. The model consists of application data and business rules, and the controller mediates input, converting it to commands for the model or view.[3] A view can be any output representation of data, such as a chart or a diagram.</p>
+
+<h2 id="what-is-function-overloading">What is function overloading?</h2>
+
+<p>Allows creating several methods with the same name which differ from each other in the type of the input and the output of the function. It is simply defined as the ability of one function to perform different tasks.</p>
+
+<h2 id="what-is-dependency-injection">What is dependency injection?</h2>
+
+<p>Dependency injection is a software design pattern in which one or more dependencies (or services) are injected, or passed byreference, into a dependent object (or client) and are made part of the client’s state. The pattern separates the creation of a client’s dependencies from its own behavior, which allows program designs to be loosely coupled and to follow the dependency inversion and single responsibility principles.</p>
+
+<h2 id="explain-the-factory-pattern">Explain the factory pattern?</h2>
+
+<p>The factory method pattern is an object-oriented creational design pattern to implement the concept of factories and deals with the problem of creating objects (products) without specifying the exact class of object that will be created.</p>
+
+<h2 id="explain-the-singleton-pattern">Explain the singleton pattern?</h2>
+
+<p>The singleton pattern is a design pattern that restricts the instantiation of a class to one object.</p>
+
+<h2 id="what-is-sql-injection">What is SQL injection?</h2>
+
+<p>SQL injection is a security vulnerability which allows intruder to steal data from system. Any system which take input from user and create SQL query without validating or sanitizing that input is vulnerable to SQL injection.</p>
+
+<h2 id="what-is-a-strongly-typed-programming-language-answer">What is a strongly typed programming language? (answer)</h2>
+
+<p>In a strongly typed language compiler ensure type correctness, for example you can not store number in String or vice-versa. Java is a strongly typed language, that’s why you have different data types e.g. int, float, String, char, boolean etc. You can only store compatible values in respective types.</p>
+
+<h2 id="how-do-you-find-a-running-java-process-on-unix">How do you find a running Java process on UNIX?</h2>
+
+<p>You can use combination of ‘ps’ and ‘grep’ command to find any process running on UNIX machine. Suppose your Java process has a name or any text which you can use to match against just use following command.</p>
+
+<h2 id="what-are-some-important-differences-between-a-linked-list-and-an-array">What are some important differences between a linked list and an array?</h2>
+
+<p>Linked list and array are two of the most important data structure in programming world. Most significant difference between them is that array stores its element at contiguous location while linked list stores its data anywhere in memory.</p>
+
+<h2 id="what-is-loose-coupling">What is loose-coupling?</h2>
+
+<p>Loose coupling is a desirable quality of software, which allows one part of software to modify without affecting other part of software. For example in a loosely coupled software a change in UI layout should not affect the back-end class structure.</p>
+
+<h2 id="can-you-describe-three-different-kinds-of-testing">Can you describe three different kinds of testing?</h2>
+
+<h3 id="unit-testing">Unit testing</h3>
+
+<p>Unit testing is used to test individual units to verify whether they are working as expected</p>
+
+<h3 id="integration-testing">Integration testing</h3>
+
+<p>integration testing is done to verify whether individually tested module can work together or not</p>
+
+<h3 id="smoke-testing">Smoke testing</h3>
+
+<p>smoke testing is a way to test whether most common functionality of software is working properly or not e.g. in a flight booking website, you should be able to book, cancel or change flights.</p>
+
+<h2 id="how-do-you-get-the-last-digit-of-an-integer">How do you get the last digit of an integer?</h2>
+
+<p>By using modulus operator, number % 10 returns the last digit of the number, for example 2345%10 will return 5 and 567%10 will return 7.</p>
+
+<h2 id="what-are-bad-characteristics-of-a-bad-unit-test">What are bad characteristics of a bad unit test?</h2>
+
+<ul>
+  <li>Tests with external dependencies (DB, file, server, time…)</li>
+  <li>Tests that depend on each other</li>
+  <li>Tests that verify the implementation rather than the behaviour</li>
+  <li>Test that are so slow that no one executes them</li>
+  <li>Tests test too many things</li>
+</ul>
+
+<h2 id="what-is-the-advantage-of-test-driven-development">What is the advantage of test driven development?</h2>
+
+<ul>
+  <li>The application is written for testability</li>
+  <li>Tests for every feature get written</li>
+  <li>Refactor code without fear of breaking functionality</li>
+  <li>Write minimal code</li>
+</ul>
+
+<h2 id="what-is-code-coverage-and-how-is-it-measured">What is code coverage and how is it measured?</h2>
+
+<p>How many lines/blocks/arcs of your code are executed while the automated tests are running</p>
+
+<h2 id="what-is-a-load-balancer-and-how-is-it-useful-for-a-web-application">What is a load balancer and how is it useful for a web application?</h2>
+
+<p>A load balancer is a device that acts as a reverse proxy and distributes network or application traffic across a number of servers. Load balancers are used to increase capacity (concurrent users) and reliability of applications.</p>
+
+<h2 id="what-is-the-difference-between-passing-by-reference-and-passing-by-value">What is the difference between passing by reference and passing by value?</h2>
+
+<p>Passing by reference means the called functions’ parameter will be the same as the callers’ passed argument (not the value, but the identity - the variable itself). Pass by value means the called functions’ parameter will be a copy of the callers’ passed argument.</p>
+
+<h2 id="whats-the-difference-between-http-and-https">What’s the difference between http and https?</h2>
+
+<p>Data transferred of https is encrypted and port 80 / 443</p>
+
+<h2 id="how-do-you-debug-an-http-request-over-the-network">How do you debug an http request over the network?</h2>
+
+<ul>
+  <li>tcpdump</li>
+  <li>wireshark</li>
+</ul>
+
+<h2 id="what-are-some-unix-package-managers">What are some unix package managers?</h2>
+
+<ul>
+  <li>yum</li>
+  <li>pip</li>
+  <li>pecl</li>
+  <li>brew</li>
+</ul>
+
+<h2 id="how-do-you-monitor-a-log-file">How do you monitor a log file?</h2>
+
+<p>By default, tail will output the last 10 lines of its input to the standard output. With command line options, the amount of output and the units (lines, blocks or bytes) may be changed.</p>
+
+      <hr />
+      <footer role="contentinfo">
+        <div class="social-share">
+  <h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/home?status=http%3A//quickinsights.io//python/interview-questions/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=http%3A//quickinsights.io//python/interview-questions/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=http%3A//quickinsights.io//python/interview-questions/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>
+</div><!-- /.social-share -->
+
+        <p class="byline"><strong>Programming phone screen questions</strong> was published on <time datetime="2015-08-16T05:00:00-07:00">August 16, 2015</time>.</p>
+      </footer>
+    </div><!-- /.article-wrap -->
+  
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrap">
+  
+  <div class="related-articles">
+  <h4>You might also enjoy <small class="pull-right">(<a href="/blog/">View all posts</a>)</small></h4>
+    <ul>
+    
+      <li><a href="/python/client-batching-affect-processing-time/" title="Client batching affect on using processing-time for aggregations">Client batching affect on using processing-time for aggregations</a></li>
+    
+      <li><a href="/python/kinesis-vs-kafka/" title="Pragmatic Guide: Apache Kafka or AWS Kinesis">Pragmatic Guide: Apache Kafka or AWS Kinesis</a></li>
+    
+      <li><a href="/python/python-default-values-and-bad-side-effects/" title="Python default values and bad side-effects">Python default values and bad side-effects</a></li>
+    
+    </ul>
+    <hr />
+  </div><!-- /.related-articles -->
+  
+  <footer>
+    
+
+<span>&copy; 2016 Mike Trienis.</span>
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="/js/mermaid.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad:true
+});
+</script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl = 
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-68277931-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	        
+
+</body>
+</html>

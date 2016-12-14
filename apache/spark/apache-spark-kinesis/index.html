@@ -1,0 +1,284 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Spark streaming and aws kinesis pitfalls &#8211; Quickinsights</title>
+<meta name="description" content="What you need to know when setting up Spark Streaming with AWS Kinesis.
+
+">
+<meta name="keywords" content="">
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Spark streaming and aws kinesis pitfalls">
+<meta name="twitter:description" content="What you need to know when setting up Spark Streaming with AWS Kinesis.
+
+">
+<meta name="twitter:site" content="@trienism">
+<meta name="twitter:creator" content="@trienism">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/images/sample-image-7.jpg">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Spark streaming and aws kinesis pitfalls">
+<meta property="og:description" content="What you need to know when setting up Spark Streaming with AWS Kinesis.
+
+">
+<meta property="og:url" content="/apache/spark/apache-spark-kinesis/">
+<meta property="og:site_name" content="Quickinsights">
+
+<meta property="og:image" content="/images/sample-image-7.jpg">
+
+
+
+
+
+
+<link rel="canonical" href="/apache/spark/apache-spark-kinesis/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Quickinsights Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/apple-touch-icon-144x144-precomposed.png">
+
+</head>
+
+<body class="post">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		<a href="/">Quickinsights</a>
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				        
+				    
+				    <li><a href="/about/" >About</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/interests/" >Interests</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/blog/" >Blog</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+  <div class="image-wrap">
+  <img src=
+    
+      "/images/sample-image-7.jpg"
+    
+  alt="Spark streaming and aws kinesis pitfalls feature image">
+  </div><!-- /.image-wrap -->
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+
+<div itemscope itemtype="http://schema.org/Person">
+
+
+	<img src="/images/bio-photo-mike.png" class="bio-photo" alt="Mike Trienis bio photo">
+
+
+  <h3 itemprop="name">Mike Trienis</h3>
+  <p>All about data product and services that scale; from design to implementation</p>
+  <a href="mailto:mike.trienis@quickinsights.io" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="http://twitter.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  <a href="http://linkedin.com/in/miketrienis" class="author-social" target="_blank"><i class="fa fa-fw fa-linkedin-square"></i> LinkedIn</a>
+  
+  
+  
+  <a href="http://github.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> Github</a>
+  <a href="http://stackoverflow.com/users/3747110/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-stack-overflow"></i> Stackoverflow</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="post">
+    <div class="headline-wrap">
+      
+        <h1><a href="/apache/spark/apache-spark-kinesis/" rel="bookmark" title="Spark streaming and aws kinesis pitfalls">Spark streaming and aws kinesis pitfalls</a></h1>
+      
+    </div><!--/ .headline-wrap -->
+    <div class="article-wrap">
+      <p>What you need to know when setting up <a href="http://spark.apache.org/streaming/">Spark Streaming</a> with <a href="https://aws.amazon.com/kinesis/">AWS Kinesis</a>.</p>
+
+<h2 id="each-receiver-occupies-an-entire-core">Each receiver occupies an entire core</h2>
+
+<p>A receiver is associated with a <em>dstream</em> which receives data from streaming sources. It typically sits on the worker and pulls in data from one or more Kinesis shards.</p>
+
+<blockquote>
+  <p>Input DStreams are DStreams representing the stream of input data received from streaming sources. In the quick example, lines was an input DStream as it represented the stream of data received from the netcat server. Every input DStream (except file stream, discussed later in this section) is associated with a Receiver (Scala doc, Java doc) object which receives the data from a source and stores it in Spark’s memory for processing.</p>
+</blockquote>
+
+<p>Receivers are generated when you create a stream to Kinesis:</p>
+
+<div class="highlight"><pre><code class="language-scala" data-lang="scala"><span class="nc">KinesisUtils</span><span class="o">.</span><span class="n">createStream</span><span class="o">(</span><span class="n">ssc</span><span class="o">,</span> <span class="n">appName</span><span class="o">,</span> <span class="n">streamName</span><span class="o">,</span> <span class="n">endpointUrl</span><span class="o">,</span> <span class="n">regionName</span><span class="o">,</span>
+        <span class="nc">InitialPositionInStream</span><span class="o">.</span><span class="nc">LATEST</span><span class="o">,</span> <span class="n">kinesisCheckpointInterval</span><span class="o">,</span> <span class="nc">StorageLevel</span><span class="o">.</span><span class="nc">MEMORY_AND_DISK_2</span><span class="o">)</span></code></pre></div>
+
+<p>For each shard in your Kinesis stream, you should typically create one receiver. Additional streams (or receivers) will allow you to scale out the amount of incoming data that will be processed.</p>
+
+<div class="highlight"><pre><code class="language-scala" data-lang="scala"><span class="k">val</span> <span class="n">numStreams</span> <span class="k">=</span> <span class="n">numShards</span>
+
+<span class="c1">// Create the Kinesis DStreams</span>
+<span class="k">val</span> <span class="n">kinesisStreams</span> <span class="k">=</span> <span class="o">(</span><span class="mi">0</span> <span class="n">until</span> <span class="n">numStreams</span><span class="o">).</span><span class="n">map</span> <span class="o">{</span> <span class="n">i</span> <span class="k">=&gt;</span>
+	<span class="nc">KinesisUtils</span><span class="o">.</span><span class="n">createStream</span><span class="o">(</span><span class="n">ssc</span><span class="o">,</span> <span class="n">appName</span><span class="o">,</span> <span class="n">streamName</span><span class="o">,</span> <span class="n">endpointUrl</span><span class="o">,</span> <span class="n">regionName</span><span class="o">,</span>
+        <span class="nc">InitialPositionInStream</span><span class="o">.</span><span class="nc">LATEST</span><span class="o">,</span> <span class="n">kinesisCheckpointInterval</span><span class="o">,</span> <span class="nc">StorageLevel</span><span class="o">.</span><span class="nc">MEMORY_AND_DISK_2</span><span class="o">)</span>
+<span class="o">}</span></code></pre></div>
+
+<p>However, it’s important to note that each receiver created will use an entire core in your cluster. If you are using the snippet above, then you will automatically create additional receivers by simply adding shards to your Kinesis stream. If you create too many receivers then you will not have any cores available for processing.</p>
+
+<h2 id="never-cross-your-kinesis-stream-names-mid-flow">Never cross your Kinesis stream names mid flow</h2>
+
+<p>During development you may need to change the stream name as you debug your application. If you noticed that you are unable to process any additional records from Kinesis then you need purge the Kinesis related DynamoDB table located in the <em>us-east-1</em> region. In some cases you may also need to delete and recreate Kinesis streams.</p>
+
+<h2 id="job-duration-should-never-exceed-batch-time">Job duration should never exceed batch time</h2>
+
+<p>The time it takes to run your jobs should always be less than the batch interval. If you find your spark jobs taking longer than the batch interval then your streaming application will take longer and longer to finish processing. That’s why it’s important to setup monitoring to measure <em>throughput</em>.</p>
+
+<h3 id="aws-cloud-watch">AWS cloud watch</h3>
+
+<p>Cloud watch provides dashboards for monitoring the put and get requests for AWS Kinesis. It’s important to understand these metrics as it will allow you to determine whether you need to increase the number of shards in Kinesis or workers in apache spark. If the <em>get rate</em> (bytes / records) is less than the maximum available then the bottleneck is your spark streaming application.</p>
+
+<h3 id="spark-web-ui">Spark Web UI</h3>
+
+<p>Spark web UI provides a scheduler delay metric that is determined by the time required to assign a task to an available resource. If your scheduling delay is increasing, it’s a good indication that your system can not handle the amount of incoming data.</p>
+
+
+      <hr />
+      <footer role="contentinfo">
+        <div class="social-share">
+  <h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/home?status=http%3A//quickinsights.io//apache/spark/apache-spark-kinesis/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=http%3A//quickinsights.io//apache/spark/apache-spark-kinesis/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=http%3A//quickinsights.io//apache/spark/apache-spark-kinesis/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>
+</div><!-- /.social-share -->
+
+        <p class="byline"><strong>Spark streaming and aws kinesis pitfalls</strong> was published on <time datetime="2015-05-31T05:00:00-07:00">May 31, 2015</time>.</p>
+      </footer>
+    </div><!-- /.article-wrap -->
+  
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrap">
+  
+  <div class="related-articles">
+  <h4>You might also enjoy <small class="pull-right">(<a href="/blog/">View all posts</a>)</small></h4>
+    <ul>
+    
+      <li><a href="/python/client-batching-affect-processing-time/" title="Client batching affect on using processing-time for aggregations">Client batching affect on using processing-time for aggregations</a></li>
+    
+      <li><a href="/python/kinesis-vs-kafka/" title="Pragmatic Guide: Apache Kafka or AWS Kinesis">Pragmatic Guide: Apache Kafka or AWS Kinesis</a></li>
+    
+      <li><a href="/python/python-default-values-and-bad-side-effects/" title="Python default values and bad side-effects">Python default values and bad side-effects</a></li>
+    
+    </ul>
+    <hr />
+  </div><!-- /.related-articles -->
+  
+  <footer>
+    
+
+<span>&copy; 2016 Mike Trienis.</span>
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="/js/mermaid.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad:true
+});
+</script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl = 
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-68277931-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	        
+
+</body>
+</html>

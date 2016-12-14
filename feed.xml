@@ -1,0 +1,1222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+<title type="text">Quickinsights</title>
+<generator uri="https://github.com/jekyll/jekyll">Jekyll</generator>
+<link rel="self" type="application/atom+xml" href="/feed.xml" />
+<link rel="alternate" type="text/html" href="" />
+<updated>2016-12-13T16:36:52-08:00</updated>
+<id>/</id>
+<author>
+  <name>Mike Trienis</name>
+  <uri>/</uri>
+  <email>mike.trienis@quickinsights.io</email>
+</author>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Client batching affect on using processing-time for aggregations]]></title>
+  <link rel="alternate" type="text/html" href="/python/client-batching-affect-processing-time/" />
+  <id>/python/client-batching-affect-processing-time</id>
+  <published>2016-12-13T04:00:00-08:00</published>
+  <updated>2016-12-13T04:00:00-08:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css&quot; /&gt;
+
+&lt;p&gt;Analyzing metrics from thousands or millions of clients typically requires aggregations for downstream analysis.&lt;/p&gt;
+
+&lt;p&gt;For example, timing metrics such as request latency would typically compute &lt;strong&gt;percentiles&lt;/strong&gt;, &lt;strong&gt;average&lt;/strong&gt;, 
+&lt;strong&gt;standard deviations&lt;/strong&gt; and then push the result to a system for visualization. See 
+&lt;a href=&quot;https://github.com/graphite-project&quot;&gt;Graphite&lt;/a&gt; and 
+&lt;a href=&quot;https://github.com/grafana/grafana&quot;&gt;Grafana&lt;/a&gt; for a standard
+event flow.&lt;/p&gt;
+
+&lt;h2 id=&quot;client-and-server-aggregation-workflow&quot;&gt;Client and server aggregation workflow&lt;/h2&gt;
+
+&lt;p&gt;Ideally the client sending metrics would emit the event as soon as it occurred. However it is often not
+ practical as it would require a very large and costly backend deployments to field all requests. Especially
+ if the number of clients is in the thousands or millions.&lt;/p&gt;
+
+&lt;p&gt;The alternative is to batch up (or buffer) metrics in the client to decrease the request rate. The problem with this
+approach is when your downstream aggregation service flushes the aggregate values based on processing-time rather than
+client time.&lt;/p&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+        graph LR
+        subgraph Client
+        A[Track Event] --&amp;gt; B{Emit Events}
+        F[Track Event] --&amp;gt; B{Emit Events} 
+        G[Track Event] --&amp;gt; B{Emit Events}
+        end
+        subgraph Server
+        B{Flush Events} --&amp;gt; C[Computes Aggregations] 
+        C[Computes Aggregations] --&amp;gt; E{Flush Aggregations}
+        end
+&lt;/div&gt;
+
+&lt;p&gt;The server flushes exactly one data point per computed aggregate using the timestamp at the end of the flush interval. 
+The following example shows the average cpu utilization over a 10 second flush interval.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/graphite.png&quot; alt=&quot;My helpful screenshot&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;the-problem-with-processing-time-or-arrival-time&quot;&gt;The problem with processing-time (or arrival-time)&lt;/h2&gt;
+
+&lt;p&gt;There are two variables that are responsible for the accuracy when computing aggregations using the processing-time:&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;&lt;strong&gt;Client flush interval&lt;/strong&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Server flush interval&lt;/strong&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Note that I’m defining &lt;strong&gt;accuracy&lt;/strong&gt; as a mapping: from the time that the event occurred (on the client) onto 
+the server flush interval. In other words, did the client generated event make it into 
+correct server flush interval?&lt;/p&gt;
+
+&lt;p&gt;Let’s try to illustrate the problem by having client(s) track &lt;strong&gt;1 event every second&lt;/strong&gt; and then push all &lt;strong&gt;3
+ events every 3 seconds&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+gantt
+    title Batching-affect
+    section Client(s) flush interval(s)
+    t=[7..9]          :done, 2016-01-01 00:00:07.000, 3s
+    t=[6..8]          :done, 2016-01-01 00:00:06.000, 3s
+    t=[5..7]          :done, 2016-01-01 00:00:05.000, 3s 
+    t=[4..6]          :done, 2016-01-01 00:00:04.000, 3s 
+    t=[3..5]          :active, 2016-01-01 00:00:03.000, 3s 
+    t=[2..4]          :active, 2016-01-01 00:00:02.000, 3s 
+    t=[1..3]          :active, done, 2016-01-01 00:00:01.000, 3s  
+    section Server flush interval(s)
+    t=[7..9)          :done, 2016-01-01 00:00:07.000, 3s
+    t=[4..6)          :active, 2016-01-01 00:00:04.000, 3s
+    t=[1..3)          :crit, done, 2016-01-01 00:00:01.000, 3s
+&lt;/div&gt;
+
+&lt;p&gt;If we assume there there is a slight delay between the client and server then the first interval 
+of data from the client will be pushed into the &lt;strong&gt;t=[4..6)&lt;/strong&gt; server flush interval.&lt;/p&gt;
+
+&lt;p&gt;That means the client flush interval &lt;strong&gt;t=[1..3]&lt;/strong&gt; has &lt;strong&gt;3/3&lt;/strong&gt; events in the wrong flush interval. In other words, 
+all 3 events should have been aggregated in the server flush interval &lt;strong&gt;t=[1..3)&lt;/strong&gt; instead of &lt;strong&gt;t=[4..6)&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Additionally, the client flush intervals &lt;strong&gt;t=[2..4]&lt;/strong&gt; and &lt;strong&gt;t=[3..5]&lt;/strong&gt; also have &lt;strong&gt;2/3&lt;/strong&gt; events and &lt;strong&gt;1/3&lt;/strong&gt; events in the wrong 
+flush interval. That is about &lt;strong&gt;6/9&lt;/strong&gt; events in the wrong server flush interval, or &lt;strong&gt;3/9&lt;/strong&gt; events in the correct flush interval.&lt;/p&gt;
+
+&lt;h2 id=&quot;mitigation-strategies&quot;&gt;Mitigation strategies&lt;/h2&gt;
+
+&lt;p&gt;It turns out that the batch interval and flushing intervals determine the accuracy 
+of the aggregated metrics.&lt;/p&gt;
+
+&lt;p&gt;If we double the server flush interval then we actually get more events in the correct buckets.&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Client flush interval&lt;/th&gt;
+      &lt;th&gt;Server flush interval&lt;/th&gt;
+      &lt;th&gt;% metrics in correct flush interval&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;3 seconds&lt;/td&gt;
+      &lt;td&gt;3 seconds&lt;/td&gt;
+      &lt;td&gt;~3/9=~33%&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;3 seconds&lt;/td&gt;
+      &lt;td&gt;6 seconds&lt;/td&gt;
+      &lt;td&gt;~6/15=~40%&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;3 seconds&lt;/td&gt;
+      &lt;td&gt;9 seconds&lt;/td&gt;
+      &lt;td&gt;~18/24=~75%&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Indeed we could &lt;strong&gt;decrease the client flush interval&lt;/strong&gt; or &lt;strong&gt;increase the server flush interval&lt;/strong&gt; and it would yield 
+the same affect of improving accuracy.&lt;/p&gt;
+
+&lt;h2 id=&quot;using-client-time-instead-of-processing-time-for-aggregations&quot;&gt;Using client time (instead of processing-time) for aggregations&lt;/h2&gt;
+
+&lt;p&gt;Another option is to generate events with client timestamps and then aggregate based on those timestamps.&lt;/p&gt;
+
+&lt;p&gt;The problems with this approach:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;It is non-trivial to deal with &lt;strong&gt;early&lt;/strong&gt; and &lt;strong&gt;late arriving&lt;/strong&gt; events. You’ll need to store and update
+aggregated state as new events arrive.&lt;/li&gt;
+  &lt;li&gt;You are trusting that all clients are configured in the right timezone. Depending on your 
+requirements this may or may not be an issue.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Keeping track of state as data arrives can be accomplished through a stream processing solution. For further details,
+ I’d recommend taking a look at &lt;a href=&quot;http://spark.apache.org/streaming/&quot;&gt;Apache Spark&lt;/a&gt; or &lt;a href=&quot;https://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple/&quot;&gt;Kafka Streams&lt;/a&gt;.&lt;/p&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/python/client-batching-affect-processing-time/&quot;&gt;Client batching affect on using processing-time for aggregations&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on December 13, 2016.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Pragmatic Guide: Apache Kafka or AWS Kinesis]]></title>
+  <link rel="alternate" type="text/html" href="/python/kinesis-vs-kafka/" />
+  <id>/python/kinesis-vs-kafka</id>
+  <published>2016-05-29T05:00:00-07:00</published>
+  <updated>2016-05-29T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css&quot; /&gt;
+
+&lt;p&gt;Building a unified data pipeline means that you will likely need to choose between two of the mainstream messaging systems:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;http://docs.aws.amazon.com/streams/latest/dev/introduction.html&quot;&gt;AWS Kinesis&lt;/a&gt;.&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://kafka.apache.org/documentation.html&quot;&gt;Apache Kafka&lt;/a&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Kinesis and Kafka are distributed publish and subscription messaging systems that are highly scalable and fault-tolerant. A few critical differences between these technologies will be examined more closely:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Latency.&lt;/li&gt;
+  &lt;li&gt;Programming interfaces.&lt;/li&gt;
+  &lt;li&gt;Reliability.&lt;/li&gt;
+  &lt;li&gt;Flow control.&lt;/li&gt;
+  &lt;li&gt;Security and authorization.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;high-latency-and-dealbreakers&quot;&gt;High latency and dealbreakers&lt;/h2&gt;
+
+&lt;p&gt;Apache Kafka is open source provides some flexibility in terms of deployment. It allows you to deploy the service local (or close) to your applications yielding extremely low latency for clients producing data. This is often a critical requirement as it minimizes the complexity and overhead of your application.&lt;/p&gt;
+
+&lt;p&gt;Client requests to Kinesis often suffer from double digit latency as each request is sent over a HTTP web server and then synchronously replicated to multiple facilities. This forces the clients to mitigate the latency by:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Forking background threads to avoid interrupting the client.&lt;/li&gt;
+  &lt;li&gt;Introduce batching to reduce the number of requests.&lt;/li&gt;
+  &lt;li&gt;Implementing a relay service that is deployed locally.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;everyone-needs-a-proxy&quot;&gt;Everyone needs a proxy&lt;/h2&gt;
+
+&lt;p&gt;One reason Kinesis has higher latency is because all communication is done through a high level HTTP proxy. However, a proxy is desirable as it provides a mechanism for:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Flow control in terms of requests or bytes per second.&lt;/li&gt;
+  &lt;li&gt;Authorization for data producers and consumers.&lt;/li&gt;
+  &lt;li&gt;Easy access for any client who can support HTTP requests.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Kinesis bandwidth and rate limiting is determined by the number of shards in your Kinesis stream. As you increase your shards, you also increase the cost of your stream:&lt;/p&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+        graph LR
+        A[Client A] -.HTTP.-&amp;gt; E[Shard 1]  
+        A[Client A] -.HTTP.-&amp;gt; F[Shard 2] 
+        B[Client B] -.HTTP.-&amp;gt; E[Shard 1]
+        C[Client C] -.HTTP.-&amp;gt; I[Shard 1]
+        subgraph Kinesis Stream A
+        E[Shard 1]
+        F[Shard 2]
+        end   
+        subgraph Kinesis Stream B
+        I[Shard 1]
+        end
+&lt;/div&gt;
+
+&lt;p&gt;Kafka supports a low level TCP client for high volume and low latency requests. There is a REST library that wraps the low level client, however, it’s managed and deployed separately:&lt;/p&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+        graph LR
+        B[Client B] -.TCP.-&amp;gt; C[Apache Kafka]
+        A[Client A] -.HTTP + Auth.-&amp;gt; D[HTTP Proxy]  
+        D[HTTP Proxy] -. flow control .-&amp;gt; C[Apache Kafka]
+        subgraph Kafka Pipeline
+        C[Apache Kafka]
+        D[HTTP Proxy]
+        end        
+&lt;/div&gt;
+
+&lt;p&gt;Kafka also has tooling to support authorization and security, see &lt;a href=&quot;http://www.confluent.io/blog/apache-kafka-security-authorization-authentication-encryption&quot;&gt;Apache Kafka Security 101&lt;/a&gt;. As you can see, it’s non-trivial to setup and will likely require an additional service for managing certificates.&lt;/p&gt;
+
+&lt;h2 id=&quot;looking-forward-and-facing-costs&quot;&gt;Looking forward and facing costs&lt;/h2&gt;
+
+&lt;p&gt;It’s important to factor these components into your cost comparison as it will take serious engineering effort to build and maintain these pieces at large scale. With Kinesis you get everything out-of-the-box:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;High durability and availability for producers and consumers.&lt;/li&gt;
+  &lt;li&gt;Ability to seamlessly scale out the service by &lt;a href=&quot;http://docs.aws.amazon.com/streams/latest/dev/kinesis-record-processor-scaling.html&quot;&gt;Resharding&lt;/a&gt;.&lt;/li&gt;
+  &lt;li&gt;Built-in monitoring through &lt;a href=&quot;https://aws.amazon.com/cloudwatch/&quot;&gt;Cloud Watch&lt;/a&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Managing Kafka clusters across multiple DCs with seamless failover is complex and will take a great deal of time and cost. That being said, Kafka is progressing quickly and has a rich set of features and tools that include:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Fine grain topic config: e.g. retention and replication.&lt;/li&gt;
+  &lt;li&gt;Purpose built processing framework called &lt;a href=&quot;http://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple&quot;&gt;Kafka Streams&lt;/a&gt;.&lt;/li&gt;
+  &lt;li&gt;Pre-built sink integrations using &lt;a href=&quot;http://docs.confluent.io/2.0.0/connect/intro.html&quot;&gt;Kafka Connect&lt;/a&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Kafka is definitely more flexible in terms of bells and whistles. It also introduces a very promising streaming technology. However, if you’re looking to quickly bootstrap your pipeline with small operational overhead then Kinesis is probably a better choice.&lt;/p&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/python/kinesis-vs-kafka/&quot;&gt;Pragmatic Guide: Apache Kafka or AWS Kinesis&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on May 29, 2016.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Python default values and bad side-effects]]></title>
+  <link rel="alternate" type="text/html" href="/python/python-default-values-and-bad-side-effects/" />
+  <id>/python/python-default-values-and-bad-side-effects</id>
+  <published>2015-08-16T05:00:00-07:00</published>
+  <updated>2015-08-16T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;The &lt;code&gt;extendList&lt;/code&gt; function defaults &lt;code&gt;myList&lt;/code&gt; to an empty list. However, &lt;code&gt;myList&lt;/code&gt; is only created when the function is first &lt;em&gt;defined&lt;/em&gt;. Therefore subsequent calls to &lt;code&gt;extendList&lt;/code&gt; will mutate and return the original list.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;extendList&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;val&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]):&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;append&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;val&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;list1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendList&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;list2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendList&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;123&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,[])&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;list3&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendList&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;a&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list1 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list1&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# list1 = [10, &amp;#39;a&amp;#39;]&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list2 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list2&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# list2 = [123]&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list3 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list3&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# list3 = [10, &amp;#39;a&amp;#39;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The desired implementation would default the &lt;code&gt;myList&lt;/code&gt; argument with the value &lt;code&gt;None&lt;/code&gt; in order to prevent the &lt;code&gt;myList&lt;/code&gt; variable from being initiated as a list.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;extendListUpdated&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;val&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;c&quot;&gt;# if no list is provided initialize an empty list&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;is&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;append&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;val&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;myList&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;list1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendListUpdated&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;list2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendListUpdated&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;123&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,[])&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;list3&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;extendListUpdated&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;a&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list1 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list1&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# [10]&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list2 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list2&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# [123]&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;list3 = &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%s&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list3&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# [&amp;#39;a&amp;#39;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Note that the &lt;code&gt;None&lt;/code&gt; value is a way to signify &lt;strong&gt;empty&lt;/strong&gt; or &lt;strong&gt;no value here&lt;/strong&gt;. It’s commonly defined as&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Assigning a value of None to a variable is one way to reset it to its original, empty state.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/python/python-default-values-and-bad-side-effects/&quot;&gt;Python default values and bad side-effects&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on August 16, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Python concepts for interviews]]></title>
+  <link rel="alternate" type="text/html" href="/python/python-concepts/" />
+  <id>/python/python-concepts</id>
+  <published>2015-08-16T05:00:00-07:00</published>
+  <updated>2015-08-16T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;Preparing for a technical interview with Python means that you should have a decent understanding of the following concepts.&lt;/p&gt;
+
+&lt;h2 id=&quot;iterating-over-iterators&quot;&gt;Iterating over iterators&lt;/h2&gt;
+
+&lt;p&gt;&lt;strong&gt;Lists&lt;/strong&gt;, &lt;strong&gt;dictionaries&lt;/strong&gt;, &lt;strong&gt;generators&lt;/strong&gt; and &lt;strong&gt;strings&lt;/strong&gt; are all example of iterators. Each one of these constructs support &lt;code&gt;for&lt;/code&gt; statements.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;c&quot;&gt;# looping through a list&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]:&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;   &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;
+&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# looping through a dictionary&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;key&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;value&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;   &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+&lt;span class=&quot;n&quot;&gt;key&lt;/span&gt;
+
+
+&lt;span class=&quot;c&quot;&gt;# looping through a string&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;hi&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+&lt;span class=&quot;n&quot;&gt;h&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;generator-functions&quot;&gt;Generator functions&lt;/h2&gt;
+
+&lt;p&gt;Generators are used to produce iterators with minimum memory consumption.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;c&quot;&gt;# Using the generator pattern (an iterable)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;firstn&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__init__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+        &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;
+        &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nums&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt;
+
+    &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__iter__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;
+
+    &lt;span class=&quot;c&quot;&gt;# Python 3 compatibility&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__next__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;next&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+
+    &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;next&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;cur&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cur&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;raise&lt;/span&gt; &lt;span class=&quot;ne&quot;&gt;StopIteration&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;sum_of_first_n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;sum&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;firstn&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;anonymous-lambda-functions&quot;&gt;Anonymous (lambda) functions&lt;/h2&gt;
+
+&lt;p&gt;The next snippet of code defines a &lt;a href=&quot;http://www.secnetix.de/olli/Python/lambda_functions.hawk&quot;&gt;lambda function&lt;/a&gt; which is essentially a function that is not bounded to a name.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;at&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x109ae6938&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;list-comprehensions&quot;&gt;List comprehensions&lt;/h2&gt;
+
+&lt;p&gt;A &lt;a href=&quot;http://www.secnetix.de/olli/Python/list_comprehensions.hawk&quot;&gt;list comprehension&lt;/a&gt; a way to generate lists using a natural syntax. If we build on the previous example, we can generate a list of lambda functions by:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;at&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x109ae6938&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;at&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x109ae6758&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;at&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x109ae69b0&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;at&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x109ae6a28&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;dynamic-arguments&quot;&gt;Dynamic arguments&lt;/h2&gt;
+
+&lt;p&gt;It’s possible to pass a dynamic number of arguments. Either a sequence of values or a sequence of key-values.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;dynamicArguments&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;arg&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;**&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;kwargs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;arg&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kwargs&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;dynamicArguments&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;first&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;second&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;third&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;second&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;third&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;first&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;linked-list-implementation-in-python&quot;&gt;Linked-list implementation in python&lt;/h2&gt;
+
+&lt;p&gt;A node in a linked list can represented as a class with a storage variable and another variable that points to the next node in the list. If the next pointer is &lt;code&gt;None&lt;/code&gt; then it’s the last element of the list.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Node&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__init__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;next&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cargo&lt;/span&gt;
+    &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;next&lt;/span&gt;  &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;next&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__str__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;nodeA&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Node&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;A&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;nodeB&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Node&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;B&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;nodeC&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Node&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;C&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;nodeA&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;next&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;nodeB&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;nodeB&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;next&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;nodeC&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;private-members-in-class&quot;&gt;Private members in class&lt;/h2&gt;
+
+&lt;p&gt;A member variable in a class can be set to private by prefixing with &lt;code&gt;__&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;n&quot;&gt;myPublicVar&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;a&amp;quot;&lt;/span&gt; 
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;n&quot;&gt;__myPrivateVar&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;b&amp;quot;&lt;/span&gt; 
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;myPublicVar&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;a&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;__myPrivateVar&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;class-variable-and-instance-variables&quot;&gt;Class variable and instance variables&lt;/h2&gt;
+
+&lt;p&gt;Class variables:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;n&quot;&gt;MyController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Controller&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+
+  &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;something/&amp;quot;&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;children&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;AController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;BController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;action&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;pass&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Instance variables:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;n&quot;&gt;MyController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Controller&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;__init__&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;something/&amp;quot;&lt;/span&gt;
+    &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;children&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;AController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;BController&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;action&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;pass&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;command-line-arguments-sysargv&quot;&gt;Command-line arguments (sys.argv)&lt;/h2&gt;
+
+&lt;p&gt;Passing command line arguments to a python script is as simple as importing &lt;code&gt;sys&lt;/code&gt; module and using the &lt;code&gt;sys.argv&lt;/code&gt; for retrieving the arguments.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;sys&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The arguments are constructed as a list when executing the python script.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;n&quot;&gt;Mikes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;MacBook&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Pro&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;miketrienis&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;python&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;example1_4&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;py&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;a&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;b&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;example1_4.py&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;a&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;b&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;pass-statement&quot;&gt;Pass statement&lt;/h2&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The pass statement does nothing. It can be used when a statement is required syntactically but the program requires no action. For example:&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;initlog&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;     &lt;span class=&quot;k&quot;&gt;pass&lt;/span&gt;   &lt;span class=&quot;c&quot;&gt;# Remember to implement this!&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/python/python-concepts/&quot;&gt;Python concepts for interviews&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on August 16, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Python closures and late binding]]></title>
+  <link rel="alternate" type="text/html" href="/python/python-closures-and-late-binding/" />
+  <id>/python/python-closures-and-late-binding</id>
+  <published>2015-08-16T05:00:00-07:00</published>
+  <updated>2015-08-16T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;An example of a closure is when a function depends on a variable outside it’s scope. A more specific definition from &lt;a href=&quot;http://stackoverflow.com/questions/4020419/why-arent-python-nested-functions-called-closures&quot;&gt;Stack Overflow Post&lt;/a&gt; states:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A closure occurs when a function has access to a local variable from an enclosing scope that has finished its execution.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;make_printer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;msg&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;printer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;():&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;msg&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;printer&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;We can see that the &lt;code&gt;printer()&lt;/code&gt; function depends on the variable &lt;code&gt;msg&lt;/code&gt; which is defined outside the scope of it’s function.&lt;/p&gt;
+
+&lt;h3 id=&quot;late-binding-and-bad-side-effects&quot;&gt;Late binding and bad side-effects&lt;/h3&gt;
+
+&lt;p&gt;However, things get a bit more complicated when we have late binding. It’s indeed a gotchas and is stated in &lt;a href=&quot;http://docs.python-guide.org/en/latest/writing/gotchas/&quot;&gt;Python Guide&lt;/a&gt; as:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Python’s closures are late binding. This means that the values of variables used in closures are looked up at the time the inner function is called.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;For example, if we are given the closure:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;multipliers&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;():&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;m&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;m&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;multipliers&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()]&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# [6, 6, 6, 6]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Then we expect the output of the print statement to be &lt;code&gt;[0, 2, 4, 6]&lt;/code&gt; based on the element-wise operation &lt;code&gt;[0*2, 1*2, 2*2, 3*2]&lt;/code&gt;. However, &lt;code&gt;[3*2, 3*2, 3*2, 3*2] = [6, 6, 6, 6]&lt;/code&gt; is what is actually return. That is because &lt;code&gt;i&lt;/code&gt; is not passed to the the &lt;em&gt;lambda function&lt;/em&gt; until the loop &lt;code&gt;for i in range(4)&lt;/code&gt; has been evaluated.&lt;/p&gt;
+
+&lt;p&gt;In order to avoid the late binding side-effect we default the &lt;code&gt;i&lt;/code&gt; argument by:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;multipliers&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;():&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;lambda&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;m&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;m&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;multipliers&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()]&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# [0, 2, 4, 6]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/python/python-closures-and-late-binding/&quot;&gt;Python closures and late binding&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on August 16, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Programming phone screen questions]]></title>
+  <link rel="alternate" type="text/html" href="/python/interview-questions/" />
+  <id>/python/interview-questions</id>
+  <published>2015-08-16T05:00:00-07:00</published>
+  <updated>2015-08-16T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;h2 id=&quot;how-do-you-scale-a-writeread-heavy-application&quot;&gt;How do you scale a write/read-heavy application?&lt;/h2&gt;
+
+&lt;h3 id=&quot;read-heavy-applications&quot;&gt;Read-heavy applications&lt;/h3&gt;
+
+&lt;p&gt;They are scaled out by adding slaves to the database as well as web nodes for serving the requests. Caching is also a useful strategy for high concurrency.&lt;/p&gt;
+
+&lt;h3 id=&quot;write-heavy-applications&quot;&gt;Write-heavy applications&lt;/h3&gt;
+
+&lt;p&gt;They are scaled out by sharding the database. It serves to balance the write load as well as distribute the data across multiple machines.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-the-difference-between-a-thread-and-a-process&quot;&gt;What is the difference between a thread and a process?&lt;/h2&gt;
+
+&lt;p&gt;Threads are used for small tasks, whereas processes are used for more ‘heavyweight’ tasks – basically the execution of applications. Another difference between a thread and a process is that threads within the same process share the same address space, whereas different processes do not.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-the-difference-between-async-and-sync-requests&quot;&gt;What is the difference between async and sync requests?&lt;/h2&gt;
+
+&lt;p&gt;A synchronous operation will prevent you from doing anything else while waiting for the request to complete or time out. Using an asynchronous operation would let you animate something for the user to show the program is busy, or even let them carry on working with other areas of functionality.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-the-difference-between-udp-and-tcp&quot;&gt;What is the difference between UDP and TCP?&lt;/h2&gt;
+
+&lt;h3 id=&quot;tcp&quot;&gt;TCP&lt;/h3&gt;
+
+&lt;p&gt;A message makes its way across the internet from one computer to another. Suited for applications that required high reliability and transmission time is less critical.&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;HTTP, HTTPs, FTP, SMTP, TELNET&lt;/li&gt;
+  &lt;li&gt;Connection-oriented protocol&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;udp&quot;&gt;UDP&lt;/h3&gt;
+
+&lt;p&gt;Suited for application that need fast, efficient transmissions, such as games. One program can send a load of packets to another and that would be the end of the relationship.&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;DNS, DHCP, TFTP, SNMP, RIP, VOIP&lt;/li&gt;
+  &lt;li&gt;Connectionless protocol&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;what-is-a-load-balancer-and-how-is-it-useful&quot;&gt;What is a load balancer and how is it useful?&lt;/h2&gt;
+
+&lt;p&gt;A load balancer is a device that acts as a reverse proxy and distributes network or application traffic across a number of servers. Load balancers are used to increase capacity (concurrent users) and reliability of applications.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-are-left-right-natural-joins-with-sql&quot;&gt;What are LEFT, RIGHT, NATURAL joins with SQL?&lt;/h2&gt;
+
+&lt;h3 id=&quot;left-join&quot;&gt;Left join&lt;/h3&gt;
+
+&lt;p&gt;LEFT JOIN is same as LEFT OUTER JOIN and means to show all records from left table (i.e. the one that precedes in SQL statement) regardless of the existence of matching records in the right table.&lt;/p&gt;
+
+&lt;h3 id=&quot;right-join&quot;&gt;Right join&lt;/h3&gt;
+
+&lt;p&gt;RIGHT JOIN is same as RIGHT OUTER JOIN and means opposite of LEFT JOIN, i.e. shows all records from the second (right) table and only matching records from first (left) table.&lt;/p&gt;
+
+&lt;h3 id=&quot;natural-join&quot;&gt;Natural join&lt;/h3&gt;
+
+&lt;p&gt;JOIN records that match in both tables&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-an-index&quot;&gt;What is an index?&lt;/h2&gt;
+
+&lt;p&gt;Most MySQL indexes (PRIMARY KEY, UNIQUE, INDEX, and FULLTEXT) are stored in B-trees.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-the-mvc-pattern&quot;&gt;What is the MVC pattern?&lt;/h2&gt;
+
+&lt;p&gt;Model–View–Controller (MVC) is a type of computer user interface that separates the representation of information from the user’s interaction with it. The model consists of application data and business rules, and the controller mediates input, converting it to commands for the model or view.[3] A view can be any output representation of data, such as a chart or a diagram.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-function-overloading&quot;&gt;What is function overloading?&lt;/h2&gt;
+
+&lt;p&gt;Allows creating several methods with the same name which differ from each other in the type of the input and the output of the function. It is simply defined as the ability of one function to perform different tasks.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-dependency-injection&quot;&gt;What is dependency injection?&lt;/h2&gt;
+
+&lt;p&gt;Dependency injection is a software design pattern in which one or more dependencies (or services) are injected, or passed byreference, into a dependent object (or client) and are made part of the client’s state. The pattern separates the creation of a client’s dependencies from its own behavior, which allows program designs to be loosely coupled and to follow the dependency inversion and single responsibility principles.&lt;/p&gt;
+
+&lt;h2 id=&quot;explain-the-factory-pattern&quot;&gt;Explain the factory pattern?&lt;/h2&gt;
+
+&lt;p&gt;The factory method pattern is an object-oriented creational design pattern to implement the concept of factories and deals with the problem of creating objects (products) without specifying the exact class of object that will be created.&lt;/p&gt;
+
+&lt;h2 id=&quot;explain-the-singleton-pattern&quot;&gt;Explain the singleton pattern?&lt;/h2&gt;
+
+&lt;p&gt;The singleton pattern is a design pattern that restricts the instantiation of a class to one object.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-sql-injection&quot;&gt;What is SQL injection?&lt;/h2&gt;
+
+&lt;p&gt;SQL injection is a security vulnerability which allows intruder to steal data from system. Any system which take input from user and create SQL query without validating or sanitizing that input is vulnerable to SQL injection.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-a-strongly-typed-programming-language-answer&quot;&gt;What is a strongly typed programming language? (answer)&lt;/h2&gt;
+
+&lt;p&gt;In a strongly typed language compiler ensure type correctness, for example you can not store number in String or vice-versa. Java is a strongly typed language, that’s why you have different data types e.g. int, float, String, char, boolean etc. You can only store compatible values in respective types.&lt;/p&gt;
+
+&lt;h2 id=&quot;how-do-you-find-a-running-java-process-on-unix&quot;&gt;How do you find a running Java process on UNIX?&lt;/h2&gt;
+
+&lt;p&gt;You can use combination of ‘ps’ and ‘grep’ command to find any process running on UNIX machine. Suppose your Java process has a name or any text which you can use to match against just use following command.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-are-some-important-differences-between-a-linked-list-and-an-array&quot;&gt;What are some important differences between a linked list and an array?&lt;/h2&gt;
+
+&lt;p&gt;Linked list and array are two of the most important data structure in programming world. Most significant difference between them is that array stores its element at contiguous location while linked list stores its data anywhere in memory.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-loose-coupling&quot;&gt;What is loose-coupling?&lt;/h2&gt;
+
+&lt;p&gt;Loose coupling is a desirable quality of software, which allows one part of software to modify without affecting other part of software. For example in a loosely coupled software a change in UI layout should not affect the back-end class structure.&lt;/p&gt;
+
+&lt;h2 id=&quot;can-you-describe-three-different-kinds-of-testing&quot;&gt;Can you describe three different kinds of testing?&lt;/h2&gt;
+
+&lt;h3 id=&quot;unit-testing&quot;&gt;Unit testing&lt;/h3&gt;
+
+&lt;p&gt;Unit testing is used to test individual units to verify whether they are working as expected&lt;/p&gt;
+
+&lt;h3 id=&quot;integration-testing&quot;&gt;Integration testing&lt;/h3&gt;
+
+&lt;p&gt;integration testing is done to verify whether individually tested module can work together or not&lt;/p&gt;
+
+&lt;h3 id=&quot;smoke-testing&quot;&gt;Smoke testing&lt;/h3&gt;
+
+&lt;p&gt;smoke testing is a way to test whether most common functionality of software is working properly or not e.g. in a flight booking website, you should be able to book, cancel or change flights.&lt;/p&gt;
+
+&lt;h2 id=&quot;how-do-you-get-the-last-digit-of-an-integer&quot;&gt;How do you get the last digit of an integer?&lt;/h2&gt;
+
+&lt;p&gt;By using modulus operator, number % 10 returns the last digit of the number, for example 2345%10 will return 5 and 567%10 will return 7.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-are-bad-characteristics-of-a-bad-unit-test&quot;&gt;What are bad characteristics of a bad unit test?&lt;/h2&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Tests with external dependencies (DB, file, server, time…)&lt;/li&gt;
+  &lt;li&gt;Tests that depend on each other&lt;/li&gt;
+  &lt;li&gt;Tests that verify the implementation rather than the behaviour&lt;/li&gt;
+  &lt;li&gt;Test that are so slow that no one executes them&lt;/li&gt;
+  &lt;li&gt;Tests test too many things&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;what-is-the-advantage-of-test-driven-development&quot;&gt;What is the advantage of test driven development?&lt;/h2&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;The application is written for testability&lt;/li&gt;
+  &lt;li&gt;Tests for every feature get written&lt;/li&gt;
+  &lt;li&gt;Refactor code without fear of breaking functionality&lt;/li&gt;
+  &lt;li&gt;Write minimal code&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;what-is-code-coverage-and-how-is-it-measured&quot;&gt;What is code coverage and how is it measured?&lt;/h2&gt;
+
+&lt;p&gt;How many lines/blocks/arcs of your code are executed while the automated tests are running&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-a-load-balancer-and-how-is-it-useful-for-a-web-application&quot;&gt;What is a load balancer and how is it useful for a web application?&lt;/h2&gt;
+
+&lt;p&gt;A load balancer is a device that acts as a reverse proxy and distributes network or application traffic across a number of servers. Load balancers are used to increase capacity (concurrent users) and reliability of applications.&lt;/p&gt;
+
+&lt;h2 id=&quot;what-is-the-difference-between-passing-by-reference-and-passing-by-value&quot;&gt;What is the difference between passing by reference and passing by value?&lt;/h2&gt;
+
+&lt;p&gt;Passing by reference means the called functions’ parameter will be the same as the callers’ passed argument (not the value, but the identity - the variable itself). Pass by value means the called functions’ parameter will be a copy of the callers’ passed argument.&lt;/p&gt;
+
+&lt;h2 id=&quot;whats-the-difference-between-http-and-https&quot;&gt;What’s the difference between http and https?&lt;/h2&gt;
+
+&lt;p&gt;Data transferred of https is encrypted and port 80 / 443&lt;/p&gt;
+
+&lt;h2 id=&quot;how-do-you-debug-an-http-request-over-the-network&quot;&gt;How do you debug an http request over the network?&lt;/h2&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;tcpdump&lt;/li&gt;
+  &lt;li&gt;wireshark&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;what-are-some-unix-package-managers&quot;&gt;What are some unix package managers?&lt;/h2&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;yum&lt;/li&gt;
+  &lt;li&gt;pip&lt;/li&gt;
+  &lt;li&gt;pecl&lt;/li&gt;
+  &lt;li&gt;brew&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;how-do-you-monitor-a-log-file&quot;&gt;How do you monitor a log file?&lt;/h2&gt;
+
+&lt;p&gt;By default, tail will output the last 10 lines of its input to the standard output. With command line options, the amount of output and the units (lines, blocks or bytes) may be changed.&lt;/p&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/python/interview-questions/&quot;&gt;Programming phone screen questions&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on August 16, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Data pipeline and stream processing]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/data-pipeline/" />
+  <id>/apache/spark/data-pipeline</id>
+  <published>2015-08-05T05:00:00-07:00</published>
+  <updated>2015-08-05T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;A data pipeline is method for shipping data efficiently to various services throughout your system. It also provides a framework that supports stream processing, enable things like:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Real-time dashboards&lt;/li&gt;
+  &lt;li&gt;Iterative recommender systems&lt;/li&gt;
+  &lt;li&gt;Data warehouses without complex ETL processes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;the-producer-consumer-model&quot;&gt;The producer consumer model&lt;/h2&gt;
+
+&lt;p&gt;The idea is that you have a set of producer and consumer applications, where the producer will publish data to your pipeline and the consumer will subscribe from your pipeline. That means that you can integrate your pipeline with multiple systems by creating multiple consumer applications.&lt;/p&gt;
+
+&lt;link rel=&quot;stylesheet&quot; href=&quot;/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css&quot; /&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+        graph LR
+ 
+        A(Mobile) -.publish.-&amp;gt; E((Pipeline)) 
+        B(Platform) -.publish.-&amp;gt; E((Pipeline))
+        C(CRM) -.publish.-&amp;gt; E((Pipeline)) 
+        D(Salesforce) -.publish.-&amp;gt; E((Pipeline))
+        E -.subscribe.-&amp;gt; G(Data Warehouse)
+        E -.subscribe.-&amp;gt; I(Real-time Dashboards)
+        E -.subscribe.-&amp;gt; J(Recommender Systems)
+        E -.subscribe.-&amp;gt; K(Third-party Integration)
+&lt;/div&gt;
+
+&lt;p&gt;It also support a &lt;em&gt;time to live&lt;/em&gt; (TTL) parameter which allows you to persist data in the pipeline for days to years. As a result you can replay messages as needed. This is particularly useful if your consumer application logic changes.&lt;/p&gt;
+
+&lt;p&gt;The pipeline is essentially a high-throughput distributed messaging system such as &lt;a href=&quot;http://kafka.apache.org/&quot;&gt;Apache Kafka&lt;/a&gt; or  &lt;a href=&quot;https://aws.amazon.com/kinesis/&quot;&gt;Amazon Kinesis&lt;/a&gt;. They are built to support a huge number of incoming and outgoing messages.&lt;/p&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/data-pipeline/&quot;&gt;Data pipeline and stream processing&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on August 05, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Python decorate pattern explained]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/python-decorate/" />
+  <id>/apache/spark/python-decorate</id>
+  <published>2015-06-05T05:00:00-07:00</published>
+  <updated>2015-06-05T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;A decorate pattern is simply a wrapper that is used to extend the behavior of a function without actually modifying the function.&lt;/p&gt;
+
+&lt;p&gt;The next example is from &lt;a href=&quot;http://thecodeship.com/patterns/guide-to-python-function-decorators/&quot;&gt;The Code Ship&lt;/a&gt; where I’ll explain in my own words. If we define a function that prints out a string given a name as an argument.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;lorem ipsum, {0} dolor sit amet&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;format&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Now if we wanted to extend the &lt;code&gt;get_text&lt;/code&gt; function to add html &lt;code&gt;&amp;lt;p&amp;gt;&lt;/code&gt; tags then we would create a wrapper that takes a generic function as an argument.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;p_decorate&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;func_wrapper&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;&amp;lt;p&amp;gt;{0}&amp;lt;/p&amp;gt;&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;format&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;func_wrapper&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;John&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# lorem ipsum, John dolor sit amet&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Assigning the decorate to a variable allows you to call the decorate function in a typical way.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;n&quot;&gt;my_get_text&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;p_decorate&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# This is what takes place when you add @p_decorate&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;my_get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;John&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# &amp;lt;p&amp;gt;lorem ipsum, John dolor sit amet&amp;lt;/p&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Python provides syntactic sugar &lt;code&gt;@&lt;/code&gt; which allows you to decorate a function and extend it’s behavior using the mechanics above.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;nd&quot;&gt;@p_decorate&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;lorem ipsum, {0} dolor sit amet&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;format&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;get_text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;John&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# &amp;lt;p&amp;gt;lorem ipsum, John dolor sit amet&amp;lt;/p&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/python-decorate/&quot;&gt;Python decorate pattern explained&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on June 05, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Java singleton pattern]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/java-singleton/" />
+  <id>/apache/spark/java-singleton</id>
+  <published>2015-06-05T05:00:00-07:00</published>
+  <updated>2015-06-05T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;The singleton pattern ensures that only one instance of an object can be instantiated. The code snippet (from &lt;a href=&quot;http://www.tutorialspoint.com/java/java_using_singleton.htm&quot;&gt;tutorialspoint&lt;/a&gt;) below is an example of a singleton pattern.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;kd&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Singleton&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+
+	&lt;span class=&quot;kd&quot;&gt;private&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Singleton&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;singleton&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Singleton&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;();&lt;/span&gt;
+	
+	&lt;span class=&quot;cm&quot;&gt;/* A private Constructor prevents any other &lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;	* class from instantiating.&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;	*/&lt;/span&gt;
+	&lt;span class=&quot;kd&quot;&gt;private&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Singleton&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+	
+	&lt;span class=&quot;cm&quot;&gt;/* Static &amp;#39;instance&amp;#39; method */&lt;/span&gt;
+	&lt;span class=&quot;kd&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Singleton&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;getInstance&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+		&lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;singleton&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;;&lt;/span&gt;
+	&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+	&lt;span class=&quot;cm&quot;&gt;/* Other methods protected by singleton-ness */&lt;/span&gt;
+	&lt;span class=&quot;kd&quot;&gt;protected&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;demoMethod&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+		&lt;span class=&quot;n&quot;&gt;System&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;out&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;println&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;demoMethod for singleton&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;);&lt;/span&gt; 
+	&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;First we notice that the &lt;code&gt;Singleton&lt;/code&gt; class is instanitated and stored in a static variable. As static variables share the same copy of the variable across all objects of the same type, so we ensure that the same object is persisted across all objects.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;kd&quot;&gt;private&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Singleton&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;singleton&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Singleton&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;();&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Since the constructor is private, the only way to instantiate te &lt;code&gt;Singleton&lt;/code&gt; object is to call the static &lt;code&gt;getInstance&lt;/code&gt; method.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;n&quot;&gt;Singleton&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tmp&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Singleton&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;getInstance&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;);&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/java-singleton/&quot;&gt;Java singleton pattern&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on June 05, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[C++ virtual functions]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/c-virtual-method/" />
+  <id>/apache/spark/c-virtual-method</id>
+  <published>2015-06-05T05:00:00-07:00</published>
+  <updated>2015-06-05T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;Virtual methods allow the subclass methods to be called even if the pointer is of type base class. The code snippet is taken from &lt;a href=&quot;http://stackoverflow.com/questions/2391679/why-do-we-need-virtual-methods-in-c&quot;&gt;Stack Overflow&lt;/a&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c--&quot; data-lang=&quot;c++&quot;&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Base&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Base::Method1&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;virtual&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Base::Method2&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Derived&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Base&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Derived::Method1&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Derived::Method2&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;//  Note - constructed as Derived, but pointer stored as Base*&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;Base&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Derived&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;  &lt;span class=&quot;c1&quot;&gt;//  Prints &amp;quot;Base::Method1&amp;quot;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;  &lt;span class=&quot;c1&quot;&gt;//  Prints &amp;quot;Derived::Method2&amp;quot;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;If the &lt;code&gt;virtual&lt;/code&gt; qualifier is missing from &lt;code&gt;Method2&lt;/code&gt; then we would have early binding and the only the method in the base class would be available.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c--&quot; data-lang=&quot;c++&quot;&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Base&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Base::Method1&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Base::Method2&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Derived&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Base&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Derived::Method1&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;cout&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;Derived::Method2&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;endl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;//  Note - constructed as Derived, but pointer stored as Base*&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;Base&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Derived&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Method1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;  &lt;span class=&quot;c1&quot;&gt;//  Prints &amp;quot;Base::Method1&amp;quot;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;obj&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Method2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;  &lt;span class=&quot;c1&quot;&gt;//  Prints &amp;quot;Base::Method2&amp;quot;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/c-virtual-method/&quot;&gt;C++ virtual functions&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on June 05, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Launching apache spark using supervisord]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/apache-spark-supervisord/" />
+  <id>/apache/spark/apache-spark-supervisord</id>
+  <published>2015-06-05T05:00:00-07:00</published>
+  <updated>2015-06-05T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;Apache Spark comes bundled with several &lt;a href=&quot;https://spark.apache.org/docs/latest/spark-standalone.html&quot;&gt;launch scripts&lt;/a&gt; to start the master and worker processes. We can launch a master and two workers processes by executing&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;./sbin/start-master.sh
+./sbin/start-slaves.sh &lt;span class=&quot;m&quot;&gt;1&lt;/span&gt; spark://master.mydomain.com:7077
+./sbin/start-slaves.sh &lt;span class=&quot;m&quot;&gt;2&lt;/span&gt; spark://master.mydomain.com:7077&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The issue with launching the cluster this way is that each time the cluster reboots you will need to re-execute the shell scripts above. This process is cumbersome and prone to error.&lt;/p&gt;
+
+&lt;h2 id=&quot;supervising-master-and-worker-processes&quot;&gt;Supervising master and worker processes&lt;/h2&gt;
+
+&lt;p&gt;A better approach requires the use of &lt;a href=&quot;http://supervisord.org/introduction.html&quot;&gt;supervisord&lt;/a&gt; (a process control system) to manage spark processes. It has the following benefits:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;No need to create shell scripts for managing processes&lt;/li&gt;
+  &lt;li&gt;Centralized monitoring mechanism for sensitive services&lt;/li&gt;
+  &lt;li&gt;Accurate up/down statuses, even when a process crashes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The only requirements is that processes must be run in the &lt;em&gt;foreground&lt;/em&gt;. Therefore the master and worker(s) processes should be initiated through &lt;code&gt;spark-class&lt;/code&gt; instead of the sbin shell scripts as they run the processes as a daemon.&lt;/p&gt;
+
+&lt;h3 id=&quot;supervisor-configuration-files&quot;&gt;Supervisor configuration files&lt;/h3&gt;
+
+&lt;p&gt;The master process will need to start prior to any workers.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;program:spark_master&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;nb&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;/bin/spark-class org.apache.spark.deploy.master.Master --ip master.mydomain.com --port &lt;span class=&quot;m&quot;&gt;7077&lt;/span&gt; --webui-port 18080
+&lt;span class=&quot;nv&quot;&gt;stderr_logfile&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; /var/log/spark_master-stderr.log
+&lt;span class=&quot;nv&quot;&gt;stdout_logfile&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; /var/log/spark_master-stdout.log
+&lt;span class=&quot;nv&quot;&gt;priority&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;1
+&lt;span class=&quot;nv&quot;&gt;autostart&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Supervisor is configured to start retries 3 times. That is usually enough time for the master process to start before the workers can begin connecting to it.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;program:spark_worker&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;nb&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;/bin/spark-class org.apache.spark.deploy.worker.Worker spark://master.mydomain.com:7077
+&lt;span class=&quot;nv&quot;&gt;stderr_logfile&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; /var/log/spark_worker-stderr.log
+&lt;span class=&quot;nv&quot;&gt;stdout_logfile&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; /var/log/spark_worker-stdout.log
+&lt;span class=&quot;nv&quot;&gt;priority&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;2
+&lt;span class=&quot;nv&quot;&gt;autostart&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;It’s convenient to drop your configuration files into &lt;code&gt;/supvisor/conf.d/&lt;/code&gt; as they will be picked up automatically when you start the Supervisord service. It allows you to easily distribute your configuration files across your cluster.&lt;/p&gt;
+
+&lt;p&gt;The priority flag means that the master will start prior to the worker. You can also set the number of retries (default is 3) for the worker in case the master has not completed its startup sequence.&lt;/p&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/apache-spark-supervisord/&quot;&gt;Launching apache spark using supervisord&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on June 05, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Integrating spark streaming and aws redshift]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/apache-spark-redshift/" />
+  <id>/apache/spark/apache-spark-redshift</id>
+  <published>2015-05-31T05:00:00-07:00</published>
+  <updated>2015-05-31T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css&quot; /&gt;
+
+&lt;p&gt;The most efficient way to load data into &lt;a href=&quot;https://aws.amazon.com/redshift/&quot;&gt;AWS Redshift&lt;/a&gt; is first upload your data to &lt;a href=&quot;https://aws.amazon.com/s3/&quot;&gt;S3&lt;/a&gt; and then execute the copy command on Redshift. From the &lt;a href=&quot;http://docs.aws.amazon.com/redshift/latest/dg/t_Loading_data.html&quot;&gt;documentation&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A COPY command is the most efficient way to load a table. When you load data from Amazon S3, the COPY command is able to read from multiple data files simultaneously. Whether you load from data files on Amazon S3 or from an Amazon DynamoDB table, Amazon Redshift distributes the workload to the cluster nodes and performs the load process in parallel.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Therefore for each batch of data in your Spark Streaming application,&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Write batch to &lt;em&gt;S3&lt;/em&gt; folder identified by the batch interval&lt;/li&gt;
+  &lt;li&gt;Copy the batch to Redshift by executing a &lt;code&gt;copy&lt;/code&gt; command&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;div class=&quot;mermaid&quot; id=&quot;i141&quot;&gt;
+        graph LR
+        A[AWS Kinesis] --&amp;gt; B[Spark Streaming Application]
+        B --&amp;gt; C[AWS S3]
+        B --&amp;gt; D[AWS Redshift]
+        C -.-&amp;gt; D
+&lt;/div&gt;
+
+&lt;p&gt;Pushing data from Spark Streaming to &lt;a href=&quot;https://aws.amazon.com/s3/&quot;&gt;S3&lt;/a&gt; is fairly straight forward as Spark exposes the &lt;code&gt;saveAsTextFile&lt;/code&gt; output operation that supports &lt;a href=&quot;https://aws.amazon.com/s3/&quot;&gt;s3n&lt;/a&gt; hadoop connection point. The endpoint will likely have a structure that resembles:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;s3n://&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;accessKey&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;:&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;secretKey&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;@&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;bucket&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;/&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;batchFolder&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;/&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;batchInterval&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The output operation can be applied to both &lt;a href=&quot;http://spark.apache.org/docs/latest/programming-guide.html#resilient-distributed-datasets-rdds&quot;&gt;RDDs&lt;/a&gt; and &lt;a href=&quot;http://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams&quot;&gt;DStreams&lt;/a&gt;. However, in order to uniquely identify the batch interval we will need to expose the spark streaming &lt;em&gt;time&lt;/em&gt; parameter. Simply override the &lt;code&gt;foreachRDD&lt;/code&gt; function:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;dispatch&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;RDD&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;],&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Time&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Unit&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// 1. Write the batch to an _S3_ folder that is identified by the batch interval &lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// 2. Copy the batch to Redshift by executing a `copy` command&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;// perform etl process&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;dstream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foreachRDD&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;dispatch&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;_&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/apache-spark-redshift/&quot;&gt;Integrating spark streaming and aws redshift&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on May 31, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Spark streaming and aws kinesis pitfalls]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/apache-spark-kinesis/" />
+  <id>/apache/spark/apache-spark-kinesis</id>
+  <published>2015-05-31T05:00:00-07:00</published>
+  <updated>2015-05-31T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;p&gt;What you need to know when setting up &lt;a href=&quot;http://spark.apache.org/streaming/&quot;&gt;Spark Streaming&lt;/a&gt; with &lt;a href=&quot;https://aws.amazon.com/kinesis/&quot;&gt;AWS Kinesis&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;each-receiver-occupies-an-entire-core&quot;&gt;Each receiver occupies an entire core&lt;/h2&gt;
+
+&lt;p&gt;A receiver is associated with a &lt;em&gt;dstream&lt;/em&gt; which receives data from streaming sources. It typically sits on the worker and pulls in data from one or more Kinesis shards.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Input DStreams are DStreams representing the stream of input data received from streaming sources. In the quick example, lines was an input DStream as it represented the stream of data received from the netcat server. Every input DStream (except file stream, discussed later in this section) is associated with a Receiver (Scala doc, Java doc) object which receives the data from a source and stores it in Spark’s memory for processing.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Receivers are generated when you create a stream to Kinesis:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;nc&quot;&gt;KinesisUtils&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;createStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ssc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;appName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;streamName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;endpointUrl&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;regionName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;nc&quot;&gt;InitialPositionInStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;LATEST&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kinesisCheckpointInterval&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;StorageLevel&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;MEMORY_AND_DISK_2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;For each shard in your Kinesis stream, you should typically create one receiver. Additional streams (or receivers) will allow you to scale out the amount of incoming data that will be processed.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numStreams&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numShards&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;// Create the Kinesis DStreams&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kinesisStreams&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;until&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;numStreams&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;map&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&amp;gt;&lt;/span&gt;
+	&lt;span class=&quot;nc&quot;&gt;KinesisUtils&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;createStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ssc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;appName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;streamName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;endpointUrl&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;regionName&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;nc&quot;&gt;InitialPositionInStream&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;LATEST&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;kinesisCheckpointInterval&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;StorageLevel&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;MEMORY_AND_DISK_2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;However, it’s important to note that each receiver created will use an entire core in your cluster. If you are using the snippet above, then you will automatically create additional receivers by simply adding shards to your Kinesis stream. If you create too many receivers then you will not have any cores available for processing.&lt;/p&gt;
+
+&lt;h2 id=&quot;never-cross-your-kinesis-stream-names-mid-flow&quot;&gt;Never cross your Kinesis stream names mid flow&lt;/h2&gt;
+
+&lt;p&gt;During development you may need to change the stream name as you debug your application. If you noticed that you are unable to process any additional records from Kinesis then you need purge the Kinesis related DynamoDB table located in the &lt;em&gt;us-east-1&lt;/em&gt; region. In some cases you may also need to delete and recreate Kinesis streams.&lt;/p&gt;
+
+&lt;h2 id=&quot;job-duration-should-never-exceed-batch-time&quot;&gt;Job duration should never exceed batch time&lt;/h2&gt;
+
+&lt;p&gt;The time it takes to run your jobs should always be less than the batch interval. If you find your spark jobs taking longer than the batch interval then your streaming application will take longer and longer to finish processing. That’s why it’s important to setup monitoring to measure &lt;em&gt;throughput&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;aws-cloud-watch&quot;&gt;AWS cloud watch&lt;/h3&gt;
+
+&lt;p&gt;Cloud watch provides dashboards for monitoring the put and get requests for AWS Kinesis. It’s important to understand these metrics as it will allow you to determine whether you need to increase the number of shards in Kinesis or workers in apache spark. If the &lt;em&gt;get rate&lt;/em&gt; (bytes / records) is less than the maximum available then the bottleneck is your spark streaming application.&lt;/p&gt;
+
+&lt;h3 id=&quot;spark-web-ui&quot;&gt;Spark Web UI&lt;/h3&gt;
+
+&lt;p&gt;Spark web UI provides a scheduler delay metric that is determined by the time required to assign a task to an available resource. If your scheduling delay is increasing, it’s a good indication that your system can not handle the amount of incoming data.&lt;/p&gt;
+
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/apache-spark-kinesis/&quot;&gt;Spark streaming and aws kinesis pitfalls&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on May 31, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+
+  
+
+<entry>
+  <title type="html"><![CDATA[Building Apache Spark using sbt]]></title>
+  <link rel="alternate" type="text/html" href="/apache/spark/apache-spark-build-sbt/" />
+  <id>/apache/spark/apache-spark-build-sbt</id>
+  <published>2015-05-31T05:00:00-07:00</published>
+  <updated>2015-05-31T05:00:00-07:00</updated>
+  <author>
+    <name>Mike Trienis</name>
+    <uri></uri>
+    <email>mike.trienis@quickinsights.io</email>
+  </author>
+  <content type="html">
+    &lt;h2 id=&quot;how-to-avoid-dependency-hell&quot;&gt;How to avoid dependency hell&lt;/h2&gt;
+
+&lt;p&gt;Assembling your fat jar through &lt;a href=&quot;https://github.com/sbt/sbt-assembly&quot;&gt;sbt-assembly&lt;/a&gt; will result in a huge number of library conflicts. In order to circumvent this issue, you can simply include all spark libraries as &lt;code&gt;provided&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-scala&quot; data-lang=&quot;scala&quot;&gt;&lt;span class=&quot;n&quot;&gt;libraryDependencies&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;++=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Seq&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-core&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;1.3.0&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-streaming&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;1.3.0&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s&quot;&gt;&amp;quot;org.apache.spark&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;spark-streaming-kinesis-asl_2.10&amp;quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;quot;provided&amp;quot;&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Provided is defined as:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;This is much like &lt;code&gt;compile&lt;/code&gt;, but indicates you expect the JDK or a container to provide the dependency at runtime. For example, when building a web application for the Java Enterprise Edition, you would set the dependency on the Servlet API and related Java EE APIs to scope &lt;code&gt;provided&lt;/code&gt; because the web container provides those classes. This scope is only available on the compilation and test classpath, and is not transitive.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Submitting a spark application through &lt;code&gt;spark-submit&lt;/code&gt; will automatically include those libraries at run-time. Additional libraries can be provided at run time by specifying &lt;code&gt;--jars&lt;/code&gt; arguments.&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;./bin/spark-submit &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  --verbose 
+  --jars &amp;lt;external-jars&amp;gt;
+  --class &amp;lt;main-class&amp;gt;
+  --master &amp;lt;master-url&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  --deploy-mode &amp;lt;deploy-mode&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  ... &lt;span class=&quot;c&quot;&gt;# other options&lt;/span&gt;
+  &amp;lt;application-jar&amp;gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;application-arguments&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+    &lt;p&gt;&lt;a href=&quot;/apache/spark/apache-spark-build-sbt/&quot;&gt;Building Apache Spark using sbt&lt;/a&gt; was originally published by Mike Trienis at &lt;a href=&quot;&quot;&gt;Quickinsights&lt;/a&gt; on May 31, 2015.&lt;/p&gt;
+  </content>
+</entry>
+
+</feed>

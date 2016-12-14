@@ -1,0 +1,340 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Pragmatic Guide: Apache Kafka or AWS Kinesis &#8211; Quickinsights</title>
+<meta name="description" content="
+
+Building a unified data pipeline means that you will likely need to choose between two of the mainstream messaging systems:
+
+">
+<meta name="keywords" content="">
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Pragmatic Guide: Apache Kafka or AWS Kinesis">
+<meta name="twitter:description" content="
+
+Building a unified data pipeline means that you will likely need to choose between two of the mainstream messaging systems:
+
+">
+<meta name="twitter:site" content="@trienism">
+<meta name="twitter:creator" content="@trienism">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/images/sample-image-7.jpg">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Pragmatic Guide: Apache Kafka or AWS Kinesis">
+<meta property="og:description" content="
+
+Building a unified data pipeline means that you will likely need to choose between two of the mainstream messaging systems:
+
+">
+<meta property="og:url" content="/python/kinesis-vs-kafka/">
+<meta property="og:site_name" content="Quickinsights">
+
+<meta property="og:image" content="/images/sample-image-7.jpg">
+
+
+
+
+
+
+<link rel="canonical" href="/python/kinesis-vs-kafka/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Quickinsights Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/apple-touch-icon-144x144-precomposed.png">
+
+</head>
+
+<body class="post">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		<a href="/">Quickinsights</a>
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				        
+				    
+				    <li><a href="/about/" >About</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/interests/" >Interests</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/blog/" >Blog</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+  <div class="image-wrap">
+  <img src=
+    
+      "/images/sample-image-7.jpg"
+    
+  alt="Pragmatic Guide: Apache Kafka or AWS Kinesis feature image">
+  </div><!-- /.image-wrap -->
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+
+<div itemscope itemtype="http://schema.org/Person">
+
+
+	<img src="/images/bio-photo-mike.png" class="bio-photo" alt="Mike Trienis bio photo">
+
+
+  <h3 itemprop="name">Mike Trienis</h3>
+  <p>All about data product and services that scale; from design to implementation</p>
+  <a href="mailto:mike.trienis@quickinsights.io" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="http://twitter.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  <a href="http://linkedin.com/in/miketrienis" class="author-social" target="_blank"><i class="fa fa-fw fa-linkedin-square"></i> LinkedIn</a>
+  
+  
+  
+  <a href="http://github.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> Github</a>
+  <a href="http://stackoverflow.com/users/3747110/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-stack-overflow"></i> Stackoverflow</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="post">
+    <div class="headline-wrap">
+      
+        <h1><a href="/python/kinesis-vs-kafka/" rel="bookmark" title="Pragmatic Guide: Apache Kafka or AWS Kinesis">Pragmatic Guide: Apache Kafka or AWS Kinesis</a></h1>
+      
+    </div><!--/ .headline-wrap -->
+    <div class="article-wrap">
+      <link rel="stylesheet" href="/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css" />
+
+<p>Building a unified data pipeline means that you will likely need to choose between two of the mainstream messaging systems:</p>
+
+<ul>
+  <li><a href="http://docs.aws.amazon.com/streams/latest/dev/introduction.html">AWS Kinesis</a>.</li>
+  <li><a href="http://kafka.apache.org/documentation.html">Apache Kafka</a>.</li>
+</ul>
+
+<p>Kinesis and Kafka are distributed publish and subscription messaging systems that are highly scalable and fault-tolerant. A few critical differences between these technologies will be examined more closely:</p>
+
+<ul>
+  <li>Latency.</li>
+  <li>Programming interfaces.</li>
+  <li>Reliability.</li>
+  <li>Flow control.</li>
+  <li>Security and authorization.</li>
+</ul>
+
+<h2 id="high-latency-and-dealbreakers">High latency and dealbreakers</h2>
+
+<p>Apache Kafka is open source provides some flexibility in terms of deployment. It allows you to deploy the service local (or close) to your applications yielding extremely low latency for clients producing data. This is often a critical requirement as it minimizes the complexity and overhead of your application.</p>
+
+<p>Client requests to Kinesis often suffer from double digit latency as each request is sent over a HTTP web server and then synchronously replicated to multiple facilities. This forces the clients to mitigate the latency by:</p>
+
+<ul>
+  <li>Forking background threads to avoid interrupting the client.</li>
+  <li>Introduce batching to reduce the number of requests.</li>
+  <li>Implementing a relay service that is deployed locally.</li>
+</ul>
+
+<h2 id="everyone-needs-a-proxy">Everyone needs a proxy</h2>
+
+<p>One reason Kinesis has higher latency is because all communication is done through a high level HTTP proxy. However, a proxy is desirable as it provides a mechanism for:</p>
+
+<ul>
+  <li>Flow control in terms of requests or bytes per second.</li>
+  <li>Authorization for data producers and consumers.</li>
+  <li>Easy access for any client who can support HTTP requests.</li>
+</ul>
+
+<p>Kinesis bandwidth and rate limiting is determined by the number of shards in your Kinesis stream. As you increase your shards, you also increase the cost of your stream:</p>
+
+<div class="mermaid" id="i141">
+        graph LR
+        A[Client A] -.HTTP.-&gt; E[Shard 1]  
+        A[Client A] -.HTTP.-&gt; F[Shard 2] 
+        B[Client B] -.HTTP.-&gt; E[Shard 1]
+        C[Client C] -.HTTP.-&gt; I[Shard 1]
+        subgraph Kinesis Stream A
+        E[Shard 1]
+        F[Shard 2]
+        end   
+        subgraph Kinesis Stream B
+        I[Shard 1]
+        end
+</div>
+
+<p>Kafka supports a low level TCP client for high volume and low latency requests. There is a REST library that wraps the low level client, however, it’s managed and deployed separately:</p>
+
+<div class="mermaid" id="i141">
+        graph LR
+        B[Client B] -.TCP.-&gt; C[Apache Kafka]
+        A[Client A] -.HTTP + Auth.-&gt; D[HTTP Proxy]  
+        D[HTTP Proxy] -. flow control .-&gt; C[Apache Kafka]
+        subgraph Kafka Pipeline
+        C[Apache Kafka]
+        D[HTTP Proxy]
+        end        
+</div>
+
+<p>Kafka also has tooling to support authorization and security, see <a href="http://www.confluent.io/blog/apache-kafka-security-authorization-authentication-encryption">Apache Kafka Security 101</a>. As you can see, it’s non-trivial to setup and will likely require an additional service for managing certificates.</p>
+
+<h2 id="looking-forward-and-facing-costs">Looking forward and facing costs</h2>
+
+<p>It’s important to factor these components into your cost comparison as it will take serious engineering effort to build and maintain these pieces at large scale. With Kinesis you get everything out-of-the-box:</p>
+
+<ul>
+  <li>High durability and availability for producers and consumers.</li>
+  <li>Ability to seamlessly scale out the service by <a href="http://docs.aws.amazon.com/streams/latest/dev/kinesis-record-processor-scaling.html">Resharding</a>.</li>
+  <li>Built-in monitoring through <a href="https://aws.amazon.com/cloudwatch/">Cloud Watch</a>.</li>
+</ul>
+
+<p>Managing Kafka clusters across multiple DCs with seamless failover is complex and will take a great deal of time and cost. That being said, Kafka is progressing quickly and has a rich set of features and tools that include:</p>
+
+<ul>
+  <li>Fine grain topic config: e.g. retention and replication.</li>
+  <li>Purpose built processing framework called <a href="http://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple">Kafka Streams</a>.</li>
+  <li>Pre-built sink integrations using <a href="http://docs.confluent.io/2.0.0/connect/intro.html">Kafka Connect</a>.</li>
+</ul>
+
+<p>Kafka is definitely more flexible in terms of bells and whistles. It also introduces a very promising streaming technology. However, if you’re looking to quickly bootstrap your pipeline with small operational overhead then Kinesis is probably a better choice.</p>
+
+
+      <hr />
+      <footer role="contentinfo">
+        <div class="social-share">
+  <h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/home?status=http%3A//quickinsights.io//python/kinesis-vs-kafka/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=http%3A//quickinsights.io//python/kinesis-vs-kafka/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=http%3A//quickinsights.io//python/kinesis-vs-kafka/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>
+</div><!-- /.social-share -->
+
+        <p class="byline"><strong>Pragmatic Guide: Apache Kafka or AWS Kinesis</strong> was published on <time datetime="2016-05-29T05:00:00-07:00">May 29, 2016</time>.</p>
+      </footer>
+    </div><!-- /.article-wrap -->
+  
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrap">
+  
+  <div class="related-articles">
+  <h4>You might also enjoy <small class="pull-right">(<a href="/blog/">View all posts</a>)</small></h4>
+    <ul>
+    
+      <li><a href="/python/client-batching-affect-processing-time/" title="Client batching affect on using processing-time for aggregations">Client batching affect on using processing-time for aggregations</a></li>
+    
+      <li><a href="/python/python-default-values-and-bad-side-effects/" title="Python default values and bad side-effects">Python default values and bad side-effects</a></li>
+    
+      <li><a href="/python/python-concepts/" title="Python concepts for interviews">Python concepts for interviews</a></li>
+    
+    </ul>
+    <hr />
+  </div><!-- /.related-articles -->
+  
+  <footer>
+    
+
+<span>&copy; 2016 Mike Trienis.</span>
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="/js/mermaid.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad:true
+});
+</script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl = 
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-68277931-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	        
+
+</body>
+</html>

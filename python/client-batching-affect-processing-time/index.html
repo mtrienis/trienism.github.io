@@ -1,0 +1,380 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Client batching affect on using processing-time for aggregations &#8211; Quickinsights</title>
+<meta name="description" content="
+
+Analyzing metrics from thousands or millions of clients typically requires aggregations for downstream analysis.
+
+">
+<meta name="keywords" content="">
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Client batching affect on using processing-time for aggregations">
+<meta name="twitter:description" content="
+
+Analyzing metrics from thousands or millions of clients typically requires aggregations for downstream analysis.
+
+">
+<meta name="twitter:site" content="@trienism">
+<meta name="twitter:creator" content="@trienism">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/images/sample-image-7.jpg">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Client batching affect on using processing-time for aggregations">
+<meta property="og:description" content="
+
+Analyzing metrics from thousands or millions of clients typically requires aggregations for downstream analysis.
+
+">
+<meta property="og:url" content="/python/client-batching-affect-processing-time/">
+<meta property="og:site_name" content="Quickinsights">
+
+<meta property="og:image" content="/images/sample-image-7.jpg">
+
+
+
+
+
+
+<link rel="canonical" href="/python/client-batching-affect-processing-time/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Quickinsights Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/apple-touch-icon-144x144-precomposed.png">
+
+</head>
+
+<body class="post">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		<a href="/">Quickinsights</a>
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				        
+				    
+				    <li><a href="/about/" >About</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/interests/" >Interests</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/blog/" >Blog</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+  <div class="image-wrap">
+  <img src=
+    
+      "/images/sample-image-7.jpg"
+    
+  alt="Client batching affect on using processing-time for aggregations feature image">
+  </div><!-- /.image-wrap -->
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+
+<div itemscope itemtype="http://schema.org/Person">
+
+
+	<img src="/images/bio-photo-mike.png" class="bio-photo" alt="Mike Trienis bio photo">
+
+
+  <h3 itemprop="name">Mike Trienis</h3>
+  <p>All about data product and services that scale; from design to implementation</p>
+  <a href="mailto:mike.trienis@quickinsights.io" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="http://twitter.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  <a href="http://linkedin.com/in/miketrienis" class="author-social" target="_blank"><i class="fa fa-fw fa-linkedin-square"></i> LinkedIn</a>
+  
+  
+  
+  <a href="http://github.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> Github</a>
+  <a href="http://stackoverflow.com/users/3747110/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-stack-overflow"></i> Stackoverflow</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="post">
+    <div class="headline-wrap">
+      
+        <h1><a href="/python/client-batching-affect-processing-time/" rel="bookmark" title="Client batching affect on using processing-time for aggregations">Client batching affect on using processing-time for aggregations</a></h1>
+      
+    </div><!--/ .headline-wrap -->
+    <div class="article-wrap">
+      <link rel="stylesheet" href="/assets/mermaid-bf645623e1934e3c6d10f895c31885f0.css" />
+
+<p>Analyzing metrics from thousands or millions of clients typically requires aggregations for downstream analysis.</p>
+
+<p>For example, timing metrics such as request latency would typically compute <strong>percentiles</strong>, <strong>average</strong>, 
+<strong>standard deviations</strong> and then push the result to a system for visualization. See 
+<a href="https://github.com/graphite-project">Graphite</a> and 
+<a href="https://github.com/grafana/grafana">Grafana</a> for a standard
+event flow.</p>
+
+<h2 id="client-and-server-aggregation-workflow">Client and server aggregation workflow</h2>
+
+<p>Ideally the client sending metrics would emit the event as soon as it occurred. However it is often not
+ practical as it would require a very large and costly backend deployments to field all requests. Especially
+ if the number of clients is in the thousands or millions.</p>
+
+<p>The alternative is to batch up (or buffer) metrics in the client to decrease the request rate. The problem with this
+approach is when your downstream aggregation service flushes the aggregate values based on processing-time rather than
+client time.</p>
+
+<div class="mermaid" id="i141">
+        graph LR
+        subgraph Client
+        A[Track Event] --&gt; B{Emit Events}
+        F[Track Event] --&gt; B{Emit Events} 
+        G[Track Event] --&gt; B{Emit Events}
+        end
+        subgraph Server
+        B{Flush Events} --&gt; C[Computes Aggregations] 
+        C[Computes Aggregations] --&gt; E{Flush Aggregations}
+        end
+</div>
+
+<p>The server flushes exactly one data point per computed aggregate using the timestamp at the end of the flush interval. 
+The following example shows the average cpu utilization over a 10 second flush interval.</p>
+
+<p><img src="/images/graphite.png" alt="My helpful screenshot" /></p>
+
+<h2 id="the-problem-with-processing-time-or-arrival-time">The problem with processing-time (or arrival-time)</h2>
+
+<p>There are two variables that are responsible for the accuracy when computing aggregations using the processing-time:</p>
+
+<ol>
+  <li><strong>Client flush interval</strong></li>
+  <li><strong>Server flush interval</strong></li>
+</ol>
+
+<p>Note that I’m defining <strong>accuracy</strong> as a mapping: from the time that the event occurred (on the client) onto 
+the server flush interval. In other words, did the client generated event make it into 
+correct server flush interval?</p>
+
+<p>Let’s try to illustrate the problem by having client(s) track <strong>1 event every second</strong> and then push all <strong>3
+ events every 3 seconds</strong>.</p>
+
+<div class="mermaid" id="i141">
+gantt
+    title Batching-affect
+    section Client(s) flush interval(s)
+    t=[7..9]          :done, 2016-01-01 00:00:07.000, 3s
+    t=[6..8]          :done, 2016-01-01 00:00:06.000, 3s
+    t=[5..7]          :done, 2016-01-01 00:00:05.000, 3s 
+    t=[4..6]          :done, 2016-01-01 00:00:04.000, 3s 
+    t=[3..5]          :active, 2016-01-01 00:00:03.000, 3s 
+    t=[2..4]          :active, 2016-01-01 00:00:02.000, 3s 
+    t=[1..3]          :active, done, 2016-01-01 00:00:01.000, 3s  
+    section Server flush interval(s)
+    t=[7..9)          :done, 2016-01-01 00:00:07.000, 3s
+    t=[4..6)          :active, 2016-01-01 00:00:04.000, 3s
+    t=[1..3)          :crit, done, 2016-01-01 00:00:01.000, 3s
+</div>
+
+<p>If we assume there there is a slight delay between the client and server then the first interval 
+of data from the client will be pushed into the <strong>t=[4..6)</strong> server flush interval.</p>
+
+<p>That means the client flush interval <strong>t=[1..3]</strong> has <strong>3/3</strong> events in the wrong flush interval. In other words, 
+all 3 events should have been aggregated in the server flush interval <strong>t=[1..3)</strong> instead of <strong>t=[4..6)</strong>.</p>
+
+<p>Additionally, the client flush intervals <strong>t=[2..4]</strong> and <strong>t=[3..5]</strong> also have <strong>2/3</strong> events and <strong>1/3</strong> events in the wrong 
+flush interval. That is about <strong>6/9</strong> events in the wrong server flush interval, or <strong>3/9</strong> events in the correct flush interval.</p>
+
+<h2 id="mitigation-strategies">Mitigation strategies</h2>
+
+<p>It turns out that the batch interval and flushing intervals determine the accuracy 
+of the aggregated metrics.</p>
+
+<p>If we double the server flush interval then we actually get more events in the correct buckets.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Client flush interval</th>
+      <th>Server flush interval</th>
+      <th>% metrics in correct flush interval</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>3 seconds</td>
+      <td>3 seconds</td>
+      <td>~3/9=~33%</td>
+    </tr>
+    <tr>
+      <td>3 seconds</td>
+      <td>6 seconds</td>
+      <td>~6/15=~40%</td>
+    </tr>
+    <tr>
+      <td>3 seconds</td>
+      <td>9 seconds</td>
+      <td>~18/24=~75%</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Indeed we could <strong>decrease the client flush interval</strong> or <strong>increase the server flush interval</strong> and it would yield 
+the same affect of improving accuracy.</p>
+
+<h2 id="using-client-time-instead-of-processing-time-for-aggregations">Using client time (instead of processing-time) for aggregations</h2>
+
+<p>Another option is to generate events with client timestamps and then aggregate based on those timestamps.</p>
+
+<p>The problems with this approach:</p>
+
+<ul>
+  <li>It is non-trivial to deal with <strong>early</strong> and <strong>late arriving</strong> events. You’ll need to store and update
+aggregated state as new events arrive.</li>
+  <li>You are trusting that all clients are configured in the right timezone. Depending on your 
+requirements this may or may not be an issue.</li>
+</ul>
+
+<p>Keeping track of state as data arrives can be accomplished through a stream processing solution. For further details,
+ I’d recommend taking a look at <a href="http://spark.apache.org/streaming/">Apache Spark</a> or <a href="https://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple/">Kafka Streams</a>.</p>
+
+
+      <hr />
+      <footer role="contentinfo">
+        <div class="social-share">
+  <h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/home?status=http%3A//quickinsights.io//python/client-batching-affect-processing-time/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=http%3A//quickinsights.io//python/client-batching-affect-processing-time/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=http%3A//quickinsights.io//python/client-batching-affect-processing-time/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>
+</div><!-- /.social-share -->
+
+        <p class="byline"><strong>Client batching affect on using processing-time for aggregations</strong> was published on <time datetime="2016-12-13T04:00:00-08:00">December 13, 2016</time>.</p>
+      </footer>
+    </div><!-- /.article-wrap -->
+  
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrap">
+  
+  <div class="related-articles">
+  <h4>You might also enjoy <small class="pull-right">(<a href="/blog/">View all posts</a>)</small></h4>
+    <ul>
+    
+      <li><a href="/python/kinesis-vs-kafka/" title="Pragmatic Guide: Apache Kafka or AWS Kinesis">Pragmatic Guide: Apache Kafka or AWS Kinesis</a></li>
+    
+      <li><a href="/python/python-default-values-and-bad-side-effects/" title="Python default values and bad side-effects">Python default values and bad side-effects</a></li>
+    
+      <li><a href="/python/python-concepts/" title="Python concepts for interviews">Python concepts for interviews</a></li>
+    
+    </ul>
+    <hr />
+  </div><!-- /.related-articles -->
+  
+  <footer>
+    
+
+<span>&copy; 2016 Mike Trienis.</span>
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="/js/mermaid.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad:true
+});
+</script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl = 
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-68277931-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	        
+
+</body>
+</html>

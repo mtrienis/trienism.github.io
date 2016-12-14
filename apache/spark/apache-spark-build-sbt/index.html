@@ -1,0 +1,268 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Building Apache Spark using sbt &#8211; Quickinsights</title>
+<meta name="description" content="How to avoid dependency hell
+
+">
+<meta name="keywords" content="">
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Building Apache Spark using sbt">
+<meta name="twitter:description" content="How to avoid dependency hell
+
+">
+<meta name="twitter:site" content="@trienism">
+<meta name="twitter:creator" content="@trienism">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/images/sample-image-7.jpg">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Building Apache Spark using sbt">
+<meta property="og:description" content="How to avoid dependency hell
+
+">
+<meta property="og:url" content="/apache/spark/apache-spark-build-sbt/">
+<meta property="og:site_name" content="Quickinsights">
+
+<meta property="og:image" content="/images/sample-image-7.jpg">
+
+
+
+
+
+
+<link rel="canonical" href="/apache/spark/apache-spark-build-sbt/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Quickinsights Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/apple-touch-icon-144x144-precomposed.png">
+
+</head>
+
+<body class="post">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="http://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		<a href="/">Quickinsights</a>
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				        
+				    
+				    <li><a href="/about/" >About</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/interests/" >Interests</a></li>
+				
+				    
+				        
+				    
+				    <li><a href="/blog/" >Blog</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+  <div class="image-wrap">
+  <img src=
+    
+      "/images/sample-image-7.jpg"
+    
+  alt="Building Apache Spark using sbt feature image">
+  </div><!-- /.image-wrap -->
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+
+<div itemscope itemtype="http://schema.org/Person">
+
+
+	<img src="/images/bio-photo-mike.png" class="bio-photo" alt="Mike Trienis bio photo">
+
+
+  <h3 itemprop="name">Mike Trienis</h3>
+  <p>All about data product and services that scale; from design to implementation</p>
+  <a href="mailto:mike.trienis@quickinsights.io" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="http://twitter.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  <a href="http://linkedin.com/in/miketrienis" class="author-social" target="_blank"><i class="fa fa-fw fa-linkedin-square"></i> LinkedIn</a>
+  
+  
+  
+  <a href="http://github.com/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> Github</a>
+  <a href="http://stackoverflow.com/users/3747110/trienism" class="author-social" target="_blank"><i class="fa fa-fw fa-stack-overflow"></i> Stackoverflow</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="post">
+    <div class="headline-wrap">
+      
+        <h1><a href="/apache/spark/apache-spark-build-sbt/" rel="bookmark" title="Building Apache Spark using sbt">Building Apache Spark using sbt</a></h1>
+      
+    </div><!--/ .headline-wrap -->
+    <div class="article-wrap">
+      <h2 id="how-to-avoid-dependency-hell">How to avoid dependency hell</h2>
+
+<p>Assembling your fat jar through <a href="https://github.com/sbt/sbt-assembly">sbt-assembly</a> will result in a huge number of library conflicts. In order to circumvent this issue, you can simply include all spark libraries as <code>provided</code>.</p>
+
+<div class="highlight"><pre><code class="language-scala" data-lang="scala"><span class="n">libraryDependencies</span> <span class="o">++=</span> <span class="nc">Seq</span><span class="o">(</span>
+  <span class="s">&quot;org.apache.spark&quot;</span> <span class="o">%%</span> <span class="s">&quot;spark-core&quot;</span> <span class="o">%</span> <span class="s">&quot;1.3.0&quot;</span> <span class="o">%</span> <span class="s">&quot;provided&quot;</span><span class="o">,</span>
+  <span class="s">&quot;org.apache.spark&quot;</span> <span class="o">%%</span> <span class="s">&quot;spark-streaming&quot;</span> <span class="o">%</span> <span class="s">&quot;1.3.0&quot;</span> <span class="o">%</span> <span class="s">&quot;provided&quot;</span><span class="o">,</span>
+  <span class="s">&quot;org.apache.spark&quot;</span> <span class="o">%%</span> <span class="s">&quot;spark-streaming-kinesis-asl_2.10&quot;</span> <span class="o">%</span> <span class="s">&quot;provided&quot;</span>
+<span class="o">)</span></code></pre></div>
+
+<p>Provided is defined as:</p>
+
+<blockquote>
+  <p>This is much like <code>compile</code>, but indicates you expect the JDK or a container to provide the dependency at runtime. For example, when building a web application for the Java Enterprise Edition, you would set the dependency on the Servlet API and related Java EE APIs to scope <code>provided</code> because the web container provides those classes. This scope is only available on the compilation and test classpath, and is not transitive.</p>
+</blockquote>
+
+<p>Submitting a spark application through <code>spark-submit</code> will automatically include those libraries at run-time. Additional libraries can be provided at run time by specifying <code>--jars</code> arguments.</p>
+
+<div class="highlight"><pre><code class="language-bash" data-lang="bash">./bin/spark-submit <span class="se">\</span>
+  --verbose 
+  --jars &lt;external-jars&gt;
+  --class &lt;main-class&gt;
+  --master &lt;master-url&gt; <span class="se">\</span>
+  --deploy-mode &lt;deploy-mode&gt; <span class="se">\</span>
+  ... <span class="c"># other options</span>
+  &lt;application-jar&gt; <span class="se">\</span>
+  <span class="o">[</span>application-arguments<span class="o">]</span></code></pre></div>
+
+      <hr />
+      <footer role="contentinfo">
+        <div class="social-share">
+  <h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/home?status=http%3A//quickinsights.io//apache/spark/apache-spark-build-sbt/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=http%3A//quickinsights.io//apache/spark/apache-spark-build-sbt/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=http%3A//quickinsights.io//apache/spark/apache-spark-build-sbt/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>
+</div><!-- /.social-share -->
+
+        <p class="byline"><strong>Building Apache Spark using sbt</strong> was published on <time datetime="2015-05-31T05:00:00-07:00">May 31, 2015</time>.</p>
+      </footer>
+    </div><!-- /.article-wrap -->
+  
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrap">
+  
+  <div class="related-articles">
+  <h4>You might also enjoy <small class="pull-right">(<a href="/blog/">View all posts</a>)</small></h4>
+    <ul>
+    
+      <li><a href="/python/client-batching-affect-processing-time/" title="Client batching affect on using processing-time for aggregations">Client batching affect on using processing-time for aggregations</a></li>
+    
+      <li><a href="/python/kinesis-vs-kafka/" title="Pragmatic Guide: Apache Kafka or AWS Kinesis">Pragmatic Guide: Apache Kafka or AWS Kinesis</a></li>
+    
+      <li><a href="/python/python-default-values-and-bad-side-effects/" title="Python default values and bad side-effects">Python default values and bad side-effects</a></li>
+    
+    </ul>
+    <hr />
+  </div><!-- /.related-articles -->
+  
+  <footer>
+    
+
+<span>&copy; 2016 Mike Trienis.</span>
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="/js/mermaid.js"></script>
+<script>
+mermaid.initialize({
+    startOnLoad:true
+});
+</script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl = 
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-68277931-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+	        
+
+</body>
+</html>
